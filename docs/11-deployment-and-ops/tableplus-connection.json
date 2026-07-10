@@ -1,0 +1,10 @@
+{
+  "Name": "Family App Local",
+  "Type": "MySQL",
+  "Host": "127.0.0.1",
+  "Port": 3306,
+  "User": "family_app",
+  "Password": "secret",
+  "Database": "family_app",
+  "SSL": false
+}

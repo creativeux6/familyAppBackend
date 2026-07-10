@@ -1,0 +1,1615 @@
+openapi: 3.0.0
+info:
+  title: 'Family App API'
+  description: 'Family networking platform API — phone auth, family graph, encrypted chat & media. Modules are grouped by tag in Swagger UI.'
+  version: 1.0.0
+servers:
+  - url: /api/v1
+    description: 'API v1'
+paths:
+  /admin/abuse-reports:
+    get:
+      tags:
+        - Admin
+      summary: 'List abuse reports'
+      operationId: adminAbuseReportsList
+      parameters:
+        -
+          name: status
+          in: query
+          schema:
+            type: string
+            enum:
+              - open
+              - reviewing
+              - resolved
+              - dismissed
+        -
+          name: page
+          in: query
+          schema:
+            type: integer
+        -
+          name: per_page
+          in: query
+          schema:
+            type: integer
+            maximum: 50
+      responses:
+        200:
+          description: 'Paginated abuse reports'
+      security:
+        -
+          bearerAuth: []
+  '/admin/abuse-reports/{uuid}':
+    patch:
+      tags:
+        - Admin
+      summary: 'Update abuse report status'
+      operationId: adminAbuseReportsUpdate
+      parameters:
+        -
+          name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: 'Updated report'
+      security:
+        -
+          bearerAuth: []
+  /admin/audit-logs:
+    get:
+      tags:
+        - Admin
+      summary: 'List audit logs'
+      operationId: adminAuditLogsList
+      parameters:
+        -
+          name: action
+          in: query
+          schema:
+            type: string
+        -
+          name: actor_user_uuid
+          in: query
+          schema:
+            type: string
+            format: uuid
+        -
+          name: page
+          in: query
+          schema:
+            type: integer
+        -
+          name: per_page
+          in: query
+          schema:
+            type: integer
+            maximum: 50
+      responses:
+        200:
+          description: 'Paginated audit logs'
+      security:
+        -
+          bearerAuth: []
+  /admin/dashboard:
+    get:
+      tags:
+        - Admin
+      summary: 'Platform overview metrics'
+      operationId: adminDashboard
+      responses:
+        200:
+          description: 'Dashboard stats'
+      security:
+        -
+          bearerAuth: []
+  /admin/users:
+    get:
+      tags:
+        - Admin
+      summary: 'List users'
+      operationId: adminUsersList
+      parameters:
+        -
+          name: search
+          in: query
+          schema:
+            type: string
+        -
+          name: include_trashed
+          in: query
+          schema:
+            type: boolean
+        -
+          name: page
+          in: query
+          schema:
+            type: integer
+        -
+          name: per_page
+          in: query
+          schema:
+            type: integer
+            maximum: 50
+      responses:
+        200:
+          description: 'Paginated users'
+      security:
+        -
+          bearerAuth: []
+  '/admin/users/{uuid}':
+    get:
+      tags:
+        - Admin
+      summary: 'Get user detail'
+      operationId: adminUsersShow
+      parameters:
+        -
+          name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: 'User detail'
+      security:
+        -
+          bearerAuth: []
+    delete:
+      tags:
+        - Admin
+      summary: 'Ban user (soft delete)'
+      operationId: adminUsersBan
+      parameters:
+        -
+          name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: 'User banned'
+      security:
+        -
+          bearerAuth: []
+    patch:
+      tags:
+        - Admin
+      summary: 'Update user'
+      operationId: adminUsersUpdate
+      parameters:
+        -
+          name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: 'Updated user'
+      security:
+        -
+          bearerAuth: []
+  '/admin/users/{uuid}/restore':
+    post:
+      tags:
+        - Admin
+      summary: 'Restore banned user'
+      operationId: adminUsersRestore
+      parameters:
+        -
+          name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: 'User restored'
+      security:
+        -
+          bearerAuth: []
+  '/admin/users/{uuid}/roles':
+    post:
+      tags:
+        - Admin
+      summary: 'Assign role to user'
+      operationId: adminUsersAssignRole
+      parameters:
+        -
+          name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: 'Role assigned'
+      security:
+        -
+          bearerAuth: []
+  '/admin/users/{uuid}/roles/{role}':
+    delete:
+      tags:
+        - Admin
+      summary: 'Remove role from user'
+      operationId: adminUsersRemoveRole
+      parameters:
+        -
+          name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        -
+          name: role
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: 'Role removed'
+      security:
+        -
+          bearerAuth: []
+  /auth/register:
+    post:
+      tags:
+        - Auth
+      summary: 'Register a new account'
+      description: 'Creates a user with phone and password, returns a Sanctum Bearer token.'
+      operationId: authRegister
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              required:
+                - phone
+                - password
+                - password_confirmation
+                - display_name
+              properties:
+                phone:
+                  type: string
+                  example: '+923001234567'
+                password:
+                  type: string
+                  format: password
+                  example: secret123
+                password_confirmation:
+                  type: string
+                  format: password
+                  example: secret123
+                display_name:
+                  type: string
+                  example: 'Ali Khan'
+              type: object
+      responses:
+        201:
+          description: Registered
+          content:
+            application/json:
+              schema:
+                properties:
+                  action:
+                    type: string
+                    example: registered
+                  token_type:
+                    type: string
+                    example: Bearer
+                  access_token:
+                    type: string
+                  user:
+                    type: object
+                type: object
+        422:
+          description: 'Validation error'
+  /auth/login:
+    post:
+      tags:
+        - Auth
+      summary: 'Login with phone and password'
+      description: 'Authenticates an existing user and returns a Sanctum Bearer token.'
+      operationId: authLogin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              required:
+                - phone
+                - password
+              properties:
+                phone:
+                  type: string
+                  example: '+923001234567'
+                password:
+                  type: string
+                  format: password
+                  example: secret123
+              type: object
+      responses:
+        200:
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                properties:
+                  action:
+                    type: string
+                    example: logged_in
+                  token_type:
+                    type: string
+                    example: Bearer
+                  access_token:
+                    type: string
+                  user:
+                    type: object
+                type: object
+        422:
+          description: 'Invalid credentials or validation error'
+  /auth/logout:
+    post:
+      tags:
+        - Auth
+      summary: 'Logout current session'
+      operationId: authLogout
+      responses:
+        200:
+          description: 'Logged out'
+        401:
+          description: Unauthenticated
+      security:
+        -
+          bearerAuth: []
+  /auth/refresh:
+    post:
+      tags:
+        - Auth
+      summary: 'Refresh access token'
+      operationId: authRefresh
+      responses:
+        200:
+          description: 'New token issued'
+        401:
+          description: Unauthenticated
+      security:
+        -
+          bearerAuth: []
+  /connections/suggestions:
+    get:
+      tags:
+        - Connections
+      summary: 'List connectable family members'
+      operationId: connectionsSuggestions
+      responses:
+        200:
+          description: 'Suggestions with connection status'
+        422:
+          description: 'Onboarding not complete'
+      security:
+        -
+          bearerAuth: []
+  /connections:
+    get:
+      tags:
+        - Connections
+      summary: 'List my connections'
+      operationId: connectionsList
+      parameters:
+        -
+          name: status
+          in: query
+          schema:
+            type: string
+            enum:
+              - pending
+              - connected
+              - rejected
+              - disconnected
+              - blocked
+      responses:
+        200:
+          description: 'Connection list'
+      security:
+        -
+          bearerAuth: []
+    post:
+      tags:
+        - Connections
+      summary: 'Send connection request'
+      operationId: connectionsSend
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              required:
+                - user_uuid
+              properties:
+                user_uuid:
+                  type: string
+                  format: uuid
+              type: object
+      responses:
+        201:
+          description: 'Request sent'
+        422:
+          description: 'Validation error'
+      security:
+        -
+          bearerAuth: []
+  /connections/bulk:
+    post:
+      tags:
+        - Connections
+      summary: 'Send connection requests to selected members'
+      operationId: connectionsBulk
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              required:
+                - user_uuids
+              properties:
+                user_uuids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+              type: object
+      responses:
+        200:
+          description: 'Bulk result'
+      security:
+        -
+          bearerAuth: []
+  /connections/connect-all:
+    post:
+      tags:
+        - Connections
+      summary: 'Send connection requests to all family members'
+      operationId: connectionsConnectAll
+      responses:
+        200:
+          description: 'Bulk result'
+      security:
+        -
+          bearerAuth: []
+  '/connections/{uuid}/accept':
+    post:
+      tags:
+        - Connections
+      summary: 'Accept a pending connection request'
+      operationId: connectionsAccept
+      parameters:
+        -
+          name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: 'Connection accepted'
+        422:
+          description: 'Invalid state'
+      security:
+        -
+          bearerAuth: []
+  '/connections/{uuid}/reject':
+    post:
+      tags:
+        - Connections
+      summary: 'Reject a pending connection request'
+      operationId: connectionsReject
+      parameters:
+        -
+          name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: 'Connection rejected'
+      security:
+        -
+          bearerAuth: []
+  '/connections/{uuid}/disconnect':
+    post:
+      tags:
+        - Connections
+      summary: 'Disconnect an active connection'
+      operationId: connectionsDisconnect
+      parameters:
+        -
+          name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Disconnected
+      security:
+        -
+          bearerAuth: []
+  '/connections/{uuid}/block':
+    post:
+      tags:
+        - Connections
+      summary: 'Block a user'
+      operationId: connectionsBlock
+      parameters:
+        -
+          name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: 'User blocked'
+      security:
+        -
+          bearerAuth: []
+  /privacy:
+    get:
+      tags:
+        - Privacy
+      summary: 'Get privacy settings'
+      operationId: privacySettings
+      responses:
+        200:
+          description: 'Privacy settings'
+      security:
+        -
+          bearerAuth: []
+  /privacy/anonymity:
+    patch:
+      tags:
+        - Privacy
+      summary: 'Toggle anonymity mode'
+      operationId: privacyUpdateAnonymity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              required:
+                - is_anonymous
+              properties:
+                is_anonymous:
+                  type: boolean
+                  example: true
+              type: object
+      responses:
+        200:
+          description: 'Anonymity updated'
+      security:
+        -
+          bearerAuth: []
+  /encryption/identity-key:
+    post:
+      tags:
+        - Encryption
+      summary: 'Upload public encryption identity key'
+      description: 'Stores X25519 public key for E2E key envelope distribution. Not cryptocurrency.'
+      operationId: encryptionStoreIdentityKey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              required:
+                - public_identity_key
+              properties:
+                public_identity_key:
+                  description: 'Base64-encoded public key'
+                  type: string
+                encryption_version:
+                  type: integer
+                  example: 1
+              type: object
+      responses:
+        201:
+          description: 'Key stored'
+        401:
+          description: Unauthenticated
+        422:
+          description: 'Validation error'
+      security:
+        -
+          bearerAuth: []
+  '/encryption/identity-key/{userUuid}':
+    get:
+      tags:
+        - Encryption
+      summary: 'Get user public encryption key'
+      operationId: encryptionGetIdentityKey
+      parameters:
+        -
+          name: userUuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: 'Public key returned'
+        404:
+          description: 'User or key not found'
+      security:
+        -
+          bearerAuth: []
+  /encryption/key-backup:
+    post:
+      tags:
+        - Encryption
+      summary: 'Store encrypted private key backup'
+      description: 'Client-encrypted backup blob for account recovery. Server cannot decrypt.'
+      operationId: encryptionStoreKeyBackup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              required:
+                - encrypted_private_key_blob
+                - salt
+              properties:
+                encrypted_private_key_blob:
+                  type: string
+                salt:
+                  type: string
+                encryption_version:
+                  type: integer
+                  example: 1
+              type: object
+      responses:
+        201:
+          description: 'Backup stored'
+        401:
+          description: Unauthenticated
+      security:
+        -
+          bearerAuth: []
+  /family-tree:
+    get:
+      tags:
+        - FamilyTree
+      summary: 'Get family tree from viewer perspective'
+      description: 'Returns members and edges with computed kinship labels. Anonymous members are hidden unless connected.'
+      operationId: familyTreeShow
+      parameters:
+        -
+          name: view_mode
+          in: query
+          schema:
+            type: string
+            default: all
+            enum:
+              - blood
+              - inlaws
+              - all
+        -
+          name: max_depth
+          in: query
+          schema:
+            type: integer
+            default: 6
+            maximum: 8
+            minimum: 1
+        -
+          name: root_member_uuid
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: 'Family tree'
+        422:
+          description: 'Onboarding not complete'
+      security:
+        -
+          bearerAuth: []
+  '/family-tree/members/{memberUuid}':
+    get:
+      tags:
+        - FamilyTree
+      summary: 'Get family member detail with kinship label'
+      operationId: familyTreeMember
+      parameters:
+        -
+          name: memberUuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        -
+          name: view_mode
+          in: query
+          schema:
+            type: string
+            default: all
+            enum:
+              - blood
+              - inlaws
+              - all
+      responses:
+        200:
+          description: 'Member detail'
+        422:
+          description: 'Not found or not visible'
+      security:
+        -
+          bearerAuth: []
+  '/family-tree/kinship/{targetMemberUuid}':
+    get:
+      tags:
+        - FamilyTree
+      summary: 'Resolve kinship label between viewer and target'
+      operationId: familyTreeKinship
+      parameters:
+        -
+          name: targetMemberUuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        -
+          name: view_mode
+          in: query
+          schema:
+            type: string
+            default: all
+            enum:
+              - blood
+              - inlaws
+              - all
+      responses:
+        200:
+          description: 'Kinship label'
+      security:
+        -
+          bearerAuth: []
+  /groups:
+    get:
+      tags:
+        - Groups
+      summary: 'List my groups'
+      operationId: groupsList
+      responses:
+        200:
+          description: 'Group list'
+      security:
+        -
+          bearerAuth: []
+    post:
+      tags:
+        - Groups
+      summary: 'Create a group with connected members'
+      operationId: groupsCreate
+      responses:
+        201:
+          description: 'Group created'
+        422:
+          description: 'Validation error'
+      security:
+        -
+          bearerAuth: []
+  '/groups/{uuid}':
+    get:
+      tags:
+        - Groups
+      summary: 'Get group details'
+      operationId: groupsShow
+      parameters:
+        -
+          name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: 'Group detail'
+      security:
+        -
+          bearerAuth: []
+    delete:
+      tags:
+        - Groups
+      summary: 'Delete group'
+      operationId: groupsDelete
+      parameters:
+        -
+          name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Deleted
+      security:
+        -
+          bearerAuth: []
+    patch:
+      tags:
+        - Groups
+      summary: 'Update group'
+      operationId: groupsUpdate
+      parameters:
+        -
+          name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Updated
+      security:
+        -
+          bearerAuth: []
+  '/groups/{uuid}/members':
+    post:
+      tags:
+        - Groups
+      summary: 'Add connected members'
+      operationId: groupsAddMembers
+      parameters:
+        -
+          name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: 'Members added'
+      security:
+        -
+          bearerAuth: []
+  '/groups/{uuid}/members/{userUuid}':
+    delete:
+      tags:
+        - Groups
+      summary: 'Remove member or leave group'
+      operationId: groupsRemoveMember
+      parameters:
+        -
+          name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        -
+          name: userUuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Removed
+      security:
+        -
+          bearerAuth: []
+  '/groups/{uuid}/realtime':
+    get:
+      tags:
+        - Groups
+      summary: 'WebSocket connection info'
+      operationId: groupsRealtime
+      parameters:
+        -
+          name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: 'Reverb config'
+      security:
+        -
+          bearerAuth: []
+  '/groups/{uuid}/encryption/envelopes':
+    post:
+      tags:
+        - Groups
+      summary: 'Store wrapped group keys'
+      operationId: groupEncryptionStoreEnvelopes
+      parameters:
+        -
+          name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Stored
+      security:
+        -
+          bearerAuth: []
+  '/groups/{uuid}/encryption/envelopes/me':
+    get:
+      tags:
+        - Groups
+      summary: 'Get my wrapped group key'
+      operationId: groupEncryptionMyEnvelope
+      parameters:
+        -
+          name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        -
+          name: generation
+          in: query
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Envelope
+      security:
+        -
+          bearerAuth: []
+  '/groups/{uuid}/messages':
+    get:
+      tags:
+        - Chat
+      summary: 'List encrypted messages'
+      operationId: groupMessagesList
+      parameters:
+        -
+          name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        -
+          name: cursor
+          in: query
+          schema:
+            type: string
+            format: uuid
+        -
+          name: limit
+          in: query
+          schema:
+            type: integer
+            default: 30
+      responses:
+        200:
+          description: 'Message page'
+      security:
+        -
+          bearerAuth: []
+    post:
+      tags:
+        - Chat
+      summary: 'Send encrypted message'
+      description: 'Broadcasts message.sent on private-group.{uuid} via Reverb.'
+      operationId: groupMessagesSend
+      parameters:
+        -
+          name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        201:
+          description: 'Message sent'
+        422:
+          description: 'Validation error'
+      security:
+        -
+          bearerAuth: []
+  /health:
+    get:
+      tags:
+        - Health
+      summary: 'API health check'
+      operationId: healthCheck
+      responses:
+        200:
+          description: 'Service is healthy'
+          content:
+            application/json:
+              schema:
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  app:
+                    type: string
+                  version:
+                    type: string
+                    example: v1
+                  timestamp:
+                    type: string
+                    format: date-time
+                type: object
+  /media:
+    get:
+      tags:
+        - Media
+      summary: 'List owned and shared media'
+      operationId: mediaList
+      responses:
+        200:
+          description: 'Media list'
+      security:
+        -
+          bearerAuth: []
+  /media/uploads/initiate:
+    post:
+      tags:
+        - Media
+      summary: 'Initiate encrypted upload'
+      operationId: mediaUploadInitiate
+      responses:
+        201:
+          description: 'Upload initiated'
+      security:
+        -
+          bearerAuth: []
+  '/media/{uuid}/content':
+    get:
+      tags:
+        - Media
+      summary: 'Download ciphertext (local disk)'
+      operationId: mediaDownloadContent
+      parameters:
+        -
+          name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: 'File bytes'
+      security:
+        -
+          bearerAuth: []
+    put:
+      tags:
+        - Media
+      summary: 'Upload ciphertext (local disk)'
+      operationId: mediaUploadContent
+      parameters:
+        -
+          name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Uploaded
+      security:
+        -
+          bearerAuth: []
+  '/media/{uuid}/complete':
+    post:
+      tags:
+        - Media
+      summary: 'Complete upload'
+      operationId: mediaUploadComplete
+      parameters:
+        -
+          name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Active
+      security:
+        -
+          bearerAuth: []
+  '/media/{uuid}':
+    get:
+      tags:
+        - Media
+      summary: 'Get media metadata and download URL'
+      operationId: mediaShow
+      parameters:
+        -
+          name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: 'Media detail'
+      security:
+        -
+          bearerAuth: []
+    delete:
+      tags:
+        - Media
+      summary: 'Delete media'
+      operationId: mediaDelete
+      parameters:
+        -
+          name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Deleted
+      security:
+        -
+          bearerAuth: []
+  '/media/{uuid}/permissions':
+    post:
+      tags:
+        - Media
+      summary: 'Grant view access to connected user or group'
+      operationId: mediaGrantPermission
+      parameters:
+        -
+          name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Granted
+      security:
+        -
+          bearerAuth: []
+  '/media/{uuid}/permissions/{permissionId}':
+    delete:
+      tags:
+        - Media
+      summary: 'Revoke permission'
+      operationId: mediaRevokePermission
+      parameters:
+        -
+          name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        -
+          name: permissionId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Revoked
+      security:
+        -
+          bearerAuth: []
+  '/media/{uuid}/encryption/envelopes':
+    post:
+      tags:
+        - Media
+      summary: 'Store wrapped content keys'
+      operationId: mediaStoreEnvelopes
+      parameters:
+        -
+          name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Stored
+      security:
+        -
+          bearerAuth: []
+  '/media/{uuid}/encryption/envelopes/me':
+    get:
+      tags:
+        - Media
+      summary: 'Get my wrapped content key'
+      operationId: mediaMyEnvelope
+      parameters:
+        -
+          name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Envelope
+      security:
+        -
+          bearerAuth: []
+  '/media/{uuid}/transfer':
+    post:
+      tags:
+        - Media
+      summary: 'Initiate ownership transfer'
+      operationId: mediaTransferInitiate
+      parameters:
+        -
+          name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        201:
+          description: 'Transfer pending'
+      security:
+        -
+          bearerAuth: []
+  '/media/transfers/{transferUuid}/accept':
+    post:
+      tags:
+        - Media
+      summary: 'Accept ownership transfer'
+      operationId: mediaTransferAccept
+      parameters:
+        -
+          name: transferUuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Accepted
+      security:
+        -
+          bearerAuth: []
+  '/media/transfers/{transferUuid}/decline':
+    post:
+      tags:
+        - Media
+      summary: 'Decline ownership transfer'
+      operationId: mediaTransferDecline
+      parameters:
+        -
+          name: transferUuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Declined
+      security:
+        -
+          bearerAuth: []
+  '/media/transfers/{transferUuid}/cancel':
+    post:
+      tags:
+        - Media
+      summary: 'Cancel ownership transfer'
+      operationId: mediaTransferCancel
+      parameters:
+        -
+          name: transferUuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Cancelled
+      security:
+        -
+          bearerAuth: []
+  /onboarding/questionnaire:
+    post:
+      tags:
+        - Onboarding
+      summary: 'Submit relative questionnaire'
+      description: 'Creates family member stubs, builds graph edges, runs family matching.'
+      operationId: onboardingSubmitQuestionnaire
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              required:
+                - answers
+              properties:
+                answers:
+                  type: array
+                  items:
+                    properties:
+                      relative_slot:
+                        type: string
+                        example: father
+                      first_name:
+                        type: string
+                        example: Ahmed
+                      last_name:
+                        type: string
+                        example: Khan
+                      date_of_birth:
+                        type: string
+                        format: date
+                        example: '1965-01-10'
+                      birthplace:
+                        type: string
+                      gender:
+                        type: string
+                        enum:
+                          - male
+                          - female
+                          - other
+                          - unknown
+                      is_living:
+                        type: boolean
+                    type: object
+              type: object
+      responses:
+        201:
+          description: 'Questionnaire processed'
+        401:
+          description: Unauthenticated
+        422:
+          description: 'Validation error'
+      security:
+        -
+          bearerAuth: []
+  /onboarding/match-result:
+    get:
+      tags:
+        - Onboarding
+      summary: 'Get latest onboarding match result'
+      operationId: onboardingMatchResult
+      responses:
+        200:
+          description: 'Match result'
+        404:
+          description: 'No session'
+      security:
+        -
+          bearerAuth: []
+  /onboarding/confirm-family:
+    post:
+      tags:
+        - Onboarding
+      summary: 'Confirm or reject family affiliation'
+      operationId: onboardingConfirmFamily
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              required:
+                - confirmed
+              properties:
+                confirmed:
+                  type: boolean
+                  example: true
+              type: object
+      responses:
+        200:
+          description: 'Confirmation processed'
+        422:
+          description: 'No match to confirm'
+      security:
+        -
+          bearerAuth: []
+  /admin/storage/plans:
+    get:
+      tags:
+        - Admin
+      summary: 'List all storage plans'
+      operationId: adminStoragePlansList
+      responses:
+        200:
+          description: Plans
+      security:
+        -
+          bearerAuth: []
+    post:
+      tags:
+        - Admin
+      summary: 'Create storage plan'
+      operationId: adminStoragePlansCreate
+      responses:
+        201:
+          description: Created
+      security:
+        -
+          bearerAuth: []
+  '/admin/storage/plans/{uuid}':
+    patch:
+      tags:
+        - Admin
+      summary: 'Update storage plan'
+      operationId: adminStoragePlansUpdate
+      parameters:
+        -
+          name: uuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Updated
+      security:
+        -
+          bearerAuth: []
+  '/admin/storage/users/{userUuid}/assignment':
+    get:
+      tags:
+        - Admin
+      summary: 'Get user plan assignment'
+      operationId: adminStorageUserAssignment
+      parameters:
+        -
+          name: userUuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Assignment
+      security:
+        -
+          bearerAuth: []
+  '/admin/storage/users/{userUuid}/assign':
+    post:
+      tags:
+        - Admin
+      summary: 'Assign plan to user'
+      operationId: adminStorageAssignPlan
+      parameters:
+        -
+          name: userUuid
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        200:
+          description: Assigned
+      security:
+        -
+          bearerAuth: []
+  '/admin/storage/assignments/{id}/revoke':
+    post:
+      tags:
+        - Admin
+      summary: 'Revoke plan assignment'
+      operationId: adminStorageRevokeAssignment
+      parameters:
+        -
+          name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        200:
+          description: Revoked
+      security:
+        -
+          bearerAuth: []
+  /storage/quota:
+    get:
+      tags:
+        - StoragePlans
+      summary: 'Get my storage quota and usage'
+      operationId: storageQuota
+      responses:
+        200:
+          description: 'Quota summary'
+      security:
+        -
+          bearerAuth: []
+  /storage/plans:
+    get:
+      tags:
+        - StoragePlans
+      summary: 'List active storage plans'
+      operationId: storagePlansCatalog
+      responses:
+        200:
+          description: 'Plan catalog'
+      security:
+        -
+          bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      description: 'Use token from POST /auth/login or POST /auth/register'
+      bearerFormat: Sanctum
+      scheme: bearer
+tags:
+  - name: Health
+    description: 'Service health checks'
+  - name: Auth
+    description: 'Phone + password authentication'
+  - name: Encryption
+    description: 'E2E encryption key envelopes (not cryptocurrency)'
+  - name: Onboarding
+    description: 'Relative questionnaire and family matching'
+  - name: Connections
+    description: 'Connect with family members'
+  - name: Privacy
+    description: 'Anonymity and visibility settings'
+  - name: FamilyTree
+    description: 'Family tree traversal and dynamic kinship labels'
+  - name: Groups
+    description: 'WhatsApp-style groups with connected family members'
+  - name: Chat
+    description: 'E2E encrypted group chat'
+  - name: Media
+    description: 'E2E encrypted media on S3'
+  - name: StoragePlans
+    description: 'Storage quota and plan catalog'
+  - name: Admin
+    description: 'Admin-only APIs (requires admin role)'
