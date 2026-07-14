@@ -47,10 +47,11 @@ class FamilyRelationPathService
             'aunt_father_sister', 'aunt_father_brother_wife',
             'sibling', 'half_sibling_mother', 'half_sibling_father',
             'father', 'mother', 'step_father', 'step_mother',
-            'child' => ['mother', 'father'],
+            'spouse' => ['mother', 'father'],
+            // "He/she is my child" — member code is enough; parent edges are created on connect.
+            'child' => [],
             'grandfather_maternal', 'grandmother_maternal' => ['mother'],
             'grandfather_paternal', 'grandmother_paternal' => ['father'],
-            'spouse' => ['mother', 'father'],
             'spouse_father', 'spouse_mother' => ['mother', 'father', 'spouse'],
             default => [],
         };
@@ -356,15 +357,6 @@ class FamilyRelationPathService
         $mother = $anchors['mother'];
         $father = $anchors['father'];
 
-        if (! $mother && ! $father) {
-            return [
-                'fits' => false,
-                'score' => 0.0,
-                'connection_path' => 'Enter your mother and father to verify this child.',
-                'suggested_join_code' => null,
-            ];
-        }
-
         $fromMother = $mother && $this->sharesParentLine($match, $mother);
         $fromFather = $father && $this->sharesParentLine($match, $father);
 
@@ -372,7 +364,7 @@ class FamilyRelationPathService
             return [
                 'fits' => true,
                 'score' => 1.0,
-                'connection_path' => 'Child of both your mother and father in this tree.',
+                'connection_path' => 'Already linked to both parents you entered in this tree.',
                 'suggested_join_code' => 'child',
             ];
         }
@@ -382,17 +374,19 @@ class FamilyRelationPathService
 
             return [
                 'fits' => true,
-                'score' => 0.85,
-                'connection_path' => "Child linked to your {$side} in this tree.",
+                'score' => 0.9,
+                'connection_path' => "Already linked to your {$side} in this tree.",
                 'suggested_join_code' => 'child',
             ];
         }
 
+        // First-time parent↔child connect: member identity is enough.
+        // Parent edges (and optional declared parents) are created when joining.
         return [
-            'fits' => false,
-            'score' => 0.0,
-            'connection_path' => 'This person is not listed as your child through the parents you entered.',
-            'suggested_join_code' => null,
+            'fits' => true,
+            'score' => 0.8,
+            'connection_path' => 'Matched as your child. Connect to link the parent relationship.',
+            'suggested_join_code' => 'child',
         ];
     }
 

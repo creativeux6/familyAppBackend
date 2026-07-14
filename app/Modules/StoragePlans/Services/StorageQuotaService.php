@@ -22,6 +22,11 @@ class StorageQuotaService
         return (int) config('media.default_quota_bytes');
     }
 
+    public function isUnlimited(User $user): bool
+    {
+        return $this->quotaBytes($user) <= 0;
+    }
+
     public function usedBytes(User $user): int
     {
         return (int) $user->storage_used_bytes;
@@ -29,6 +34,10 @@ class StorageQuotaService
 
     public function remainingBytes(User $user): int
     {
+        if ($this->isUnlimited($user)) {
+            return PHP_INT_MAX;
+        }
+
         return max(0, $this->quotaBytes($user) - $this->usedBytes($user));
     }
 
@@ -36,11 +45,13 @@ class StorageQuotaService
     public function summary(User $user): array
     {
         $assignment = $this->assignmentService->activeAssignment($user);
+        $unlimited = $this->isUnlimited($user);
 
         return [
             'quota_bytes' => $this->quotaBytes($user),
             'used_bytes' => $this->usedBytes($user),
-            'remaining_bytes' => $this->remainingBytes($user),
+            'remaining_bytes' => $unlimited ? null : $this->remainingBytes($user),
+            'unlimited' => $unlimited,
             'using_default_quota' => $assignment === null,
             'plan' => $assignment?->plan ? StoragePlanService::formatPlan($assignment->plan) : null,
             'assignment' => $assignment ? [
@@ -58,6 +69,10 @@ class StorageQuotaService
             throw ValidationException::withMessages([
                 'size_bytes' => ['File size must be greater than zero.'],
             ]);
+        }
+
+        if ($this->isUnlimited($user)) {
+            return;
         }
 
         if ($this->usedBytes($user) + $sizeBytes > $this->quotaBytes($user)) {

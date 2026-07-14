@@ -158,7 +158,12 @@ server {
     root /var/www/familyapp/backend/public;
     index index.php;
 
-    client_max_body_size 64M;
+    # 0 = no body-size limit (S3-backed media uses chunked uploads).
+    # If you prefer a hard ceiling, use e.g. 1024M — never leave nginx at the
+    # default 1m or gallery multi-upload returns HTTP 413.
+    client_max_body_size 0;
+
+    # Also set PHP: upload_max_filesize=1024M and post_max_size=1024M.
 
     # Laravel API
     location / {

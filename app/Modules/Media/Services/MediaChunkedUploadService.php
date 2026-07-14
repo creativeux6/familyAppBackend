@@ -17,7 +17,8 @@ class MediaChunkedUploadService
 
     public function chunkSize(): int
     {
-        return max(1024 * 1024, (int) config('media.chunk_size_bytes', 5 * 1024 * 1024));
+        // Floor at 512 KiB for tiny environments; production default is 5 MiB.
+        return max(512 * 1024, (int) config('media.chunk_size_bytes', 5 * 1024 * 1024));
     }
 
     /** @return array<string, mixed> */
