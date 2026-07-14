@@ -13,6 +13,9 @@ use App\Modules\Media\Services\MediaCoOwnerService;
 use App\Modules\Media\Services\MediaEventService;
 use App\Modules\Media\Services\MediaOwnershipService;
 use App\Modules\Media\Services\MediaPermissionService;
+use App\Modules\Media\Http\Requests\MarkMediaSharesSeenRequest;
+use App\Modules\Media\Services\MediaShareInboxService;
+use App\Modules\Media\Services\MediaStreamService;
 use App\Modules\Media\Services\MediaUploadService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -26,16 +29,39 @@ class MediaController extends Controller
         private readonly MediaOwnershipService $ownershipService,
         private readonly MediaEventService $eventService,
         private readonly MediaCoOwnerService $coOwnerService,
+        private readonly MediaStreamService $streamService,
+        private readonly MediaShareInboxService $shareInboxService,
     ) {}
+
+    public function shareUnreadCount(Request $request): JsonResponse
+    {
+        return response()->json([
+            'unread_count' => $this->shareInboxService->unreadCountForUser($request->user()),
+        ]);
+    }
+
+    public function markSharesSeen(MarkMediaSharesSeenRequest $request): JsonResponse
+    {
+        return response()->json(
+            $this->shareInboxService->markSeen(
+                $request->user(),
+                $request->validated('media_uuids'),
+            )
+        );
+    }
 
     #[OA\Get(path: '/media', operationId: 'mediaList', summary: 'List owned and shared media', tags: ['Media'], security: [['bearerAuth' => []]], responses: [new OA\Response(response: 200, description: 'Media list')])]
     public function index(Request $request): JsonResponse
     {
         $scope = $request->query('scope');
+        $limit = $request->query('limit');
+        $cursor = $request->query('cursor');
 
         return response()->json($this->uploadService->listForUser(
             $request->user(),
             is_string($scope) ? $scope : null,
+            is_numeric($limit) ? (int) $limit : null,
+            is_string($cursor) && $cursor !== '' ? $cursor : null,
         ));
     }
 
@@ -68,6 +94,58 @@ class MediaController extends Controller
     public function downloadContent(Request $request, string $uuid)
     {
         return $this->uploadService->downloadContent($request->user(), $uuid);
+    }
+
+    public function uploadThumbnail(Request $request, string $uuid): JsonResponse
+    {
+        $nonce = $request->header('X-Media-Thumb-Nonce');
+        $mime = $request->header('X-Media-Thumb-Mime', 'image/jpeg');
+
+        return response()->json(
+            $this->uploadService->uploadThumbnail(
+                $request->user(),
+                $uuid,
+                $request->getContent(),
+                is_string($nonce) ? $nonce : null,
+                is_string($mime) ? $mime : 'image/jpeg',
+            )
+        );
+    }
+
+    public function downloadThumbnail(Request $request, string $uuid)
+    {
+        return $this->uploadService->downloadThumbnail($request->user(), $uuid);
+    }
+
+    public function storeStreamManifest(Request $request, string $uuid): JsonResponse
+    {
+        $manifest = $request->all();
+        if ($manifest === []) {
+            $manifest = json_decode($request->getContent(), true) ?? [];
+        }
+
+        return response()->json(
+            $this->streamService->storeManifest($request->user(), $uuid, is_array($manifest) ? $manifest : [])
+        );
+    }
+
+    public function storeStreamChunk(Request $request, string $uuid, int $index): JsonResponse
+    {
+        return response()->json(
+            $this->streamService->storeChunk($request->user(), $uuid, $index, $request->getContent())
+        );
+    }
+
+    public function streamManifest(Request $request, string $uuid): JsonResponse
+    {
+        return response()->json(
+            $this->streamService->getManifest($request->user(), $uuid)
+        );
+    }
+
+    public function streamChunk(Request $request, string $uuid, int $index)
+    {
+        return $this->streamService->downloadChunk($request->user(), $uuid, $index);
     }
 
     #[OA\Post(path: '/media/{uuid}/complete', operationId: 'mediaUploadComplete', summary: 'Complete upload', tags: ['Media'], security: [['bearerAuth' => []]], parameters: [new OA\Parameter(name: 'uuid', in: 'path', required: true, schema: new OA\Schema(type: 'string', format: 'uuid'))], responses: [new OA\Response(response: 200, description: 'Active')])]
@@ -139,6 +217,7 @@ class MediaController extends Controller
                 $uuid,
                 $request->validated('user_uuid'),
                 $request->input('access', 'view'),
+                (bool) $request->boolean('notify', true),
             );
         }
 

@@ -78,6 +78,15 @@ class MediaAccessService
             ->exists();
     }
 
+    public function assertCanShare(User $user, MediaFile $media): void
+    {
+        if (! $this->isCoOwner($user, $media)) {
+            throw ValidationException::withMessages([
+                'media' => ['Only the file owner can share this file.'],
+            ]);
+        }
+    }
+
     public function assertOwner(User $user, MediaFile $media): void
     {
         if (! $this->isOwner($user, $media)) {

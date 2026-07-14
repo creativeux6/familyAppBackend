@@ -78,3 +78,4 @@ FamilyMemberCreated → SyncGraphProjectionListener (no-op v1, Neo4j sync v2)
 RelationshipEdgeCreated → SyncGraphProjectionListener
 MessageStored → BroadcastMessageEnvelope (Reverb)
 ```
+php artisan calendar:send-notifications

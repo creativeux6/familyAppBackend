@@ -6,6 +6,7 @@ use App\Models\FamilyMember;
 use App\Models\Message;
 use App\Models\User;
 use App\Modules\Groups\Services\GroupService;
+use App\Modules\Media\Services\MediaShareInboxService;
 
 class PushNotificationService
 {
@@ -72,6 +73,51 @@ class PushNotificationService
                     0,
                 );
             }
+        }
+    }
+
+    public function notifyMediaShared(
+        User $sharer,
+        User $recipient,
+        string $mediaUuid,
+        string $access,
+        string $displayName,
+    ): void {
+        if (! $this->fcmClient->isConfigured()) {
+            return;
+        }
+
+        if ((int) $sharer->id === (int) $recipient->id) {
+            return;
+        }
+
+        $tokens = $this->tokenService->tokensForUser($recipient);
+        if ($tokens === []) {
+            return;
+        }
+
+        $sharerName = $sharer->display_name ?: 'Someone';
+        $fileLabel = trim($displayName) !== '' ? trim($displayName) : 'a file';
+        $body = $access === 'owner'
+            ? "{$sharerName} shared {$fileLabel} to your storage"
+            : "{$sharerName} shared {$fileLabel} with you";
+
+        $unreadCount = $this->shareInboxService->unreadCountForUser($recipient);
+
+        foreach ($tokens as $token) {
+            $this->fcmClient->send(
+                $token,
+                'Media shared',
+                $body,
+                [
+                    'type' => 'media.shared',
+                    'media_uuid' => $mediaUuid,
+                    'access' => $access,
+                    'sharer_uuid' => (string) $sharer->uuid,
+                    'unread_count' => (string) $unreadCount,
+                ],
+                0,
+            );
         }
     }
 

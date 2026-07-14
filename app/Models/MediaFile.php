@@ -23,6 +23,8 @@ class MediaFile extends Model
         'uploaded_by_user_id',
         's3_bucket',
         's3_key',
+        'thumbnail_s3_key',
+        'thumbnail_size_bytes',
         'display_name',
         'size_bytes',
         'mime_type',
@@ -40,11 +42,17 @@ class MediaFile extends Model
     {
         return [
             'size_bytes' => 'integer',
+            'thumbnail_size_bytes' => 'integer',
             'encryption_version' => 'integer',
             'uploaded_parts' => 'array',
             'chunk_size' => 'integer',
             'metadata' => 'array',
         ];
+    }
+
+    public function hasThumbnail(): bool
+    {
+        return is_string($this->thumbnail_s3_key) && $this->thumbnail_s3_key !== '';
     }
 
     public function owner(): BelongsTo

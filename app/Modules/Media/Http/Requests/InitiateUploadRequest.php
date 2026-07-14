@@ -29,6 +29,7 @@ class InitiateUploadRequest extends FormRequest
             'metadata.source' => ['sometimes', 'nullable', 'string', 'in:chat,gallery'],
             'metadata.file_nonce' => ['sometimes', 'nullable', 'string', 'max:512'],
             'metadata.group_uuid' => ['sometimes', 'nullable', 'uuid'],
+            'metadata.storage_mode' => ['sometimes', 'nullable', 'string', 'in:sender,co_owner'],
         ];
     }
 }

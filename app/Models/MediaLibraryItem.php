@@ -11,6 +11,7 @@ class MediaLibraryItem extends Model
         'media_file_uuid',
         'user_id',
         'quota_charged_at',
+        'stream_bytes_charged',
         'removed_at',
     ];
 
@@ -19,6 +20,7 @@ class MediaLibraryItem extends Model
         return [
             'quota_charged_at' => 'datetime',
             'removed_at' => 'datetime',
+            'stream_bytes_charged' => 'integer',
         ];
     }
 

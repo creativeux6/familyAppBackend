@@ -26,6 +26,27 @@ class MediaCoOwnerService
         return ($metadata['source'] ?? null) === 'chat';
     }
 
+    public function isChatCoOwnerMedia(MediaFile $media): bool
+    {
+        if (! $this->isChatMedia($media)) {
+            return false;
+        }
+
+        $metadata = is_array($media->metadata) ? $media->metadata : [];
+
+        return ($metadata['storage_mode'] ?? 'co_owner') === 'co_owner';
+    }
+
+    /** @param  array<string, mixed>|null  $metadata */
+    public function isChatCoOwnerMetadata(?array $metadata): bool
+    {
+        if (! is_array($metadata) || ($metadata['source'] ?? null) !== 'chat') {
+            return false;
+        }
+
+        return ($metadata['storage_mode'] ?? 'co_owner') === 'co_owner';
+    }
+
     /** @return array<string, mixed> */
     public function assignGroupChatCoOwners(User $uploader, string $mediaUuid, string $groupUuid): array
     {
@@ -38,9 +59,9 @@ class MediaCoOwnerService
             ]);
         }
 
-        if (! $this->isChatMedia($media)) {
+        if (! $this->isChatCoOwnerMedia($media)) {
             throw ValidationException::withMessages([
-                'media' => ['Co-ownership assignment is only for chat attachments.'],
+                'media' => ['Co-ownership is only available for their-storage chat files.'],
             ]);
         }
 
@@ -85,25 +106,102 @@ class MediaCoOwnerService
         });
     }
 
-    public function chargeAccessQuotaIfNeeded(User $user, MediaFile $media): void
+    public function isUserCoOwner(User $user, MediaFile $media): bool
     {
-        if (! $this->isChatMedia($media) || $media->status !== 'active') {
-            return;
+        if ((int) $media->uploaded_by_user_id === (int) $user->id) {
+            return false;
+        }
+
+        return MediaPermission::query()
+            ->where('media_file_uuid', $media->uuid)
+            ->where('user_id', $user->id)
+            ->where('access', 'owner')
+            ->exists();
+    }
+
+    public function shouldChargeCoOwnerQuota(User $user, MediaFile $media): bool
+    {
+        if ($media->status !== 'active') {
+            return false;
         }
 
         if ((int) $media->uploaded_by_user_id === (int) $user->id) {
+            return false;
+        }
+
+        return $this->isChatCoOwnerMedia($media) || $this->isUserCoOwner($user, $media);
+    }
+
+    public function ensureLibraryItemForUser(int $userId, MediaFile $media): MediaLibraryItem
+    {
+        return $this->ensureLibraryItem($userId, $media);
+    }
+
+    public function chargeAccessQuotaIfNeeded(User $user, MediaFile $media): void
+    {
+        if (! $this->shouldChargeCoOwnerQuota($user, $media)) {
             return;
         }
 
         $item = $this->ensureLibraryItem($user->id, $media);
+        $fileSize = max(0, (int) $media->size_bytes);
+        $already = (int) $item->stream_bytes_charged;
 
-        if ($item->quota_charged_at !== null) {
+        if ($already >= $fileSize) {
+            if ($item->quota_charged_at === null) {
+                $item->update(['quota_charged_at' => now()]);
+            }
+
             return;
         }
 
-        $this->quotaService->assertCanStore($user, (int) $media->size_bytes);
-        $this->quotaService->addUsage($user, (int) $media->size_bytes);
-        $item->update(['quota_charged_at' => now()]);
+        $charge = $fileSize - $already;
+        $this->quotaService->assertCanStore($user, $charge);
+        $this->quotaService->addUsage($user, $charge);
+        $item->update([
+            'quota_charged_at' => now(),
+            'stream_bytes_charged' => $fileSize,
+        ]);
+    }
+
+    /**
+     * Incrementally charge co-owner quota for streamed bytes (capped at file size).
+     */
+    public function chargeStreamBytesIfNeeded(User $user, MediaFile $media, int $bytes): void
+    {
+        if ($bytes <= 0) {
+            return;
+        }
+
+        if (! $this->shouldChargeCoOwnerQuota($user, $media)) {
+            return;
+        }
+
+        $item = $this->ensureLibraryItem($user->id, $media);
+        $fileSize = max(0, (int) $media->size_bytes);
+        $already = (int) $item->stream_bytes_charged;
+
+        if ($already >= $fileSize) {
+            if ($item->quota_charged_at === null) {
+                $item->update(['quota_charged_at' => now()]);
+            }
+
+            return;
+        }
+
+        $charge = min($bytes, $fileSize - $already);
+        if ($charge <= 0) {
+            return;
+        }
+
+        $this->quotaService->assertCanStore($user, $charge);
+        $this->quotaService->addUsage($user, $charge);
+
+        $newTotal = $already + $charge;
+        $item->update([
+            'stream_bytes_charged' => $newTotal,
+            'quota_charged_at' => $item->quota_charged_at ?? now(),
+        ]);
     }
 
     /** @return array<string, mixed> */
@@ -119,8 +217,12 @@ class MediaCoOwnerService
             $item = $this->ensureLibraryItem($user->id, $media);
 
             if ($item->removed_at === null) {
-                if ($item->quota_charged_at !== null) {
-                    $this->quotaService->removeUsage($user, (int) $media->size_bytes);
+                $charged = (int) $item->stream_bytes_charged;
+                if ($charged <= 0 && $item->quota_charged_at !== null) {
+                    $charged = (int) $media->size_bytes;
+                }
+                if ($charged > 0) {
+                    $this->quotaService->removeUsage($user, $charged);
                 }
 
                 $item->update(['removed_at' => now()]);
@@ -178,7 +280,12 @@ class MediaCoOwnerService
     private function purgeStorage(MediaFile $media): void
     {
         if ($media->status === 'active') {
-            Storage::disk((string) config('media.disk'))->delete($media->s3_key);
+            $disk = Storage::disk((string) config('media.disk'));
+            $disk->delete($media->s3_key);
+            if ($media->hasThumbnail()) {
+                $disk->delete($media->thumbnail_s3_key);
+            }
+            app(MediaStreamService::class)->deleteStreamPackage($media);
         }
 
         $media->update(['status' => 'deleted']);

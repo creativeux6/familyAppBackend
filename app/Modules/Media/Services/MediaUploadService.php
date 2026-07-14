@@ -2,6 +2,7 @@
 
 namespace App\Modules\Media\Services;
 
+use App\Models\MediaEvent;
 use App\Models\MediaFile;
 use App\Models\MediaKeyEnvelope;
 use App\Models\User;
@@ -34,19 +35,20 @@ class MediaUploadService
             ->where('owner_user_id', $user->id)
             ->where('status', 'pending_upload')
             ->get()
-            ->reject(fn (MediaFile $media) => $this->coOwnerService->isChatMedia($media))
+            ->reject(fn (MediaFile $media) => $this->coOwnerService->isChatCoOwnerMedia($media))
             ->sum('size_bytes');
 
-        $this->quotaService->assertCanStore($user, $sizeBytes + $pendingBytes);
+        $normalizedMetadata = $this->normalizeMetadata($metadata);
 
         if ($mediaEventUuid !== null) {
-            app(MediaEventService::class)->requireOwnedEvent($user, $mediaEventUuid);
+            app(MediaEventService::class)->assertEventMatchesUploadScope(
+                $user,
+                $mediaEventUuid,
+                $normalizedMetadata,
+            );
         }
 
-        $normalizedMetadata = $this->normalizeMetadata($metadata);
-        $isChat = ($normalizedMetadata['source'] ?? null) === 'chat';
-
-        if (! $isChat) {
+        if (! $this->coOwnerService->isChatCoOwnerMetadata($normalizedMetadata)) {
             $this->quotaService->assertCanStore($user, $sizeBytes + $pendingBytes);
         }
 
@@ -125,9 +127,9 @@ class MediaUploadService
         }
 
         return DB::transaction(function () use ($user, $media, $actualSize) {
-            $isChat = $this->coOwnerService->isChatMedia($media);
+            $skipSenderQuota = $this->coOwnerService->isChatCoOwnerMedia($media);
 
-            if (! $isChat) {
+            if (! $skipSenderQuota) {
                 $this->quotaService->assertCanStore($user, $actualSize);
             }
 
@@ -138,7 +140,7 @@ class MediaUploadService
                 'uploaded_parts' => null,
             ]);
 
-            if (! $isChat) {
+            if (! $skipSenderQuota) {
                 $this->quotaService->addUsage($user->fresh(), $actualSize);
             }
 
@@ -161,9 +163,14 @@ class MediaUploadService
     }
 
     /** @return array<string, mixed> */
-    public function listForUser(User $user, ?string $scope = null): array
-    {
+    public function listForUser(
+        User $user,
+        ?string $scope = null,
+        ?int $limit = null,
+        ?string $cursor = null,
+    ): array {
         $galleryScope = $scope === 'gallery';
+        $pageSize = max(1, min($limit ?? (int) config('media.list_page_size', 20), 50));
 
         $removedUuids = \App\Models\MediaLibraryItem::query()
             ->where('user_id', $user->id)
@@ -198,33 +205,158 @@ class MediaUploadService
 
         $shared = collect();
 
-        if ($galleryScope) {
-            $sharedUuids = \App\Models\MediaPermission::query()
-                ->where('user_id', $user->id)
-                ->where('access', 'view')
-                ->pluck('media_file_uuid');
+        $directViewUuids = \App\Models\MediaPermission::query()
+            ->where('user_id', $user->id)
+            ->where('access', 'view')
+            ->pluck('media_file_uuid');
 
-            $groupUuids = \App\Models\GroupMember::query()
-                ->where('user_id', $user->id)
-                ->pluck('group_uuid');
+        $groupUuids = \App\Models\GroupMember::query()
+            ->where('user_id', $user->id)
+            ->pluck('group_uuid');
 
-            $groupSharedUuids = \App\Models\MediaPermission::query()
+        $groupSharedUuids = $galleryScope
+            ? \App\Models\MediaPermission::query()
                 ->whereIn('group_uuid', $groupUuids)
-                ->pluck('media_file_uuid');
+                ->pluck('media_file_uuid')
+            : collect();
 
+        $sharedCandidateUuids = $directViewUuids
+            ->merge($groupSharedUuids)
+            ->unique();
+
+        if ($sharedCandidateUuids->isNotEmpty()) {
             $shared = MediaFile::query()
-                ->whereIn('uuid', $sharedUuids->merge($groupSharedUuids)->unique())
+                ->whereIn('uuid', $sharedCandidateUuids)
                 ->where('status', 'active')
                 ->where('owner_user_id', '!=', $user->id)
                 ->whereNotIn('uuid', $coOwnedUuids)
                 ->whereNotIn('uuid', $removedUuids)
-                ->get();
+                ->get()
+                ->filter(fn (MediaFile $media) => $galleryScope
+                    ? $this->isGalleryMedia($user, $media)
+                    : $this->isPrivateMedia($user, $media))
+                ->values();
+        }
+
+        $accessibleGalleryEventUuids = $galleryScope
+            ? collect(
+                app(MediaEventService::class)->accessibleEventUuidsForUser(
+                    $user,
+                    MediaEvent::SCOPE_GALLERY,
+                )
+            )
+            : collect();
+
+        $items = $owned
+            ->map(fn (MediaFile $m) => ['media' => $m, 'is_owned' => true])
+            ->concat($shared->map(fn (MediaFile $m) => ['media' => $m, 'is_owned' => false]))
+            ->filter(function (array $row) use ($galleryScope, $accessibleGalleryEventUuids) {
+                /** @var MediaFile $media */
+                $media = $row['media'];
+
+                if ($galleryScope) {
+                    $eventUuid = $media->media_event_uuid;
+
+                    return ! is_string($eventUuid)
+                        || $eventUuid === ''
+                        || ! $accessibleGalleryEventUuids->contains($eventUuid);
+                }
+
+                return $media->media_event_uuid === null || $media->media_event_uuid === '';
+            })
+            ->sortByDesc(function (array $row) {
+                /** @var MediaFile $media */
+                $media = $row['media'];
+
+                return sprintf(
+                    '%s|%s',
+                    $media->created_at?->format('Y-m-d\TH:i:s.uP') ?? '',
+                    $media->uuid,
+                );
+            })
+            ->values();
+
+        if ($cursor !== null) {
+            [$cursorCreatedAt, $cursorUuid] = array_pad(explode('|', $cursor, 2), 2, null);
+            $items = $items->filter(function (array $row) use ($cursorCreatedAt, $cursorUuid) {
+                /** @var MediaFile $media */
+                $media = $row['media'];
+                $createdAt = $media->created_at?->toIso8601String() ?? '';
+
+                if ($createdAt < $cursorCreatedAt) {
+                    return true;
+                }
+
+                if ($createdAt > $cursorCreatedAt) {
+                    return false;
+                }
+
+                return is_string($cursorUuid) && $media->uuid < $cursorUuid;
+            })->values();
+        }
+
+        $page = $items->take($pageSize + 1);
+        $hasMore = $page->count() > $pageSize;
+        $pageItems = $page->take($pageSize)->values();
+
+        $formatted = $pageItems->map(function (array $row) use ($user) {
+            /** @var MediaFile $media */
+            $media = $row['media'];
+
+            return $this->formatMedia($media, $user, isOwned: (bool) $row['is_owned']);
+        })->all();
+
+        $nextCursor = null;
+        if ($hasMore && $pageItems->isNotEmpty()) {
+            /** @var MediaFile $last */
+            $last = $pageItems->last()['media'];
+            $nextCursor = ($last->created_at?->toIso8601String() ?? '').'|'.$last->uuid;
+        }
+
+        $eventScope = $galleryScope ? MediaEvent::SCOPE_GALLERY : MediaEvent::SCOPE_PRIVATE;
+        $eventService = app(MediaEventService::class);
+        $accessibleEventUuids = collect(
+            $eventService->accessibleEventUuidsForUser($user, $eventScope)
+        );
+
+        $eventFiles = $owned
+            ->filter(function (MediaFile $m) use ($accessibleEventUuids) {
+                $eventUuid = $m->media_event_uuid;
+
+                return is_string($eventUuid)
+                    && $eventUuid !== ''
+                    && $accessibleEventUuids->contains($eventUuid);
+            })
+            ->map(fn (MediaFile $m) => $this->formatMedia($m, $user))
+            ->values()
+            ->all();
+
+        if ($galleryScope && $shared->isNotEmpty()) {
+            $sharedEventFiles = $shared
+                ->filter(function (MediaFile $m) use ($accessibleEventUuids) {
+                    $eventUuid = $m->media_event_uuid;
+
+                    return is_string($eventUuid)
+                        && $eventUuid !== ''
+                        && $accessibleEventUuids->contains($eventUuid);
+                })
+                ->map(fn (MediaFile $m) => $this->formatMedia($m, $user, isOwned: false))
+                ->values();
+
+            $existing = collect($eventFiles)->pluck('uuid');
+            $eventFiles = collect($eventFiles)
+                ->concat($sharedEventFiles->filter(fn (array $row) => ! $existing->contains($row['uuid'])))
+                ->values()
+                ->all();
         }
 
         return [
-            'owned' => $owned->map(fn (MediaFile $m) => $this->formatMedia($m, $user))->values()->all(),
-            'shared' => $shared->map(fn (MediaFile $m) => $this->formatMedia($m, $user, isOwned: false))->values()->all(),
-            'events' => $galleryScope ? [] : app(MediaEventService::class)->listForUser($user),
+            'items' => $formatted,
+            'event_files' => $eventFiles,
+            'next_cursor' => $nextCursor,
+            'has_more' => $hasMore,
+            'limit' => $pageSize,
+            'events' => $eventService->listForUser($user, $eventScope),
             'quota_bytes' => $this->quotaService->quotaBytes($user),
             'used_bytes' => $this->quotaService->usedBytes($user),
         ];
@@ -265,7 +397,7 @@ class MediaUploadService
     {
         $media = $this->accessService->requireMedia($uuid);
 
-        if ($this->coOwnerService->isChatMedia($media)) {
+        if ($this->coOwnerService->isChatCoOwnerMedia($media)) {
             return $this->coOwnerService->removeFromUserLibrary($user, $media);
         }
 
@@ -273,7 +405,12 @@ class MediaUploadService
 
         return DB::transaction(function () use ($user, $media) {
             if ($media->status === 'active') {
-                Storage::disk((string) config('media.disk'))->delete($media->s3_key);
+                $disk = Storage::disk((string) config('media.disk'));
+                $disk->delete($media->s3_key);
+                if ($media->hasThumbnail()) {
+                    $disk->delete($media->thumbnail_s3_key);
+                }
+                app(MediaStreamService::class)->deleteStreamPackage($media);
                 $this->quotaService->removeUsage($user, (int) $media->size_bytes);
             } elseif ($media->status === 'pending_upload') {
                 $this->chunkedUploadService->cleanupPartialUpload($media);
@@ -284,6 +421,81 @@ class MediaUploadService
 
             return ['message' => 'Media deleted.'];
         });
+    }
+
+    public function uploadThumbnail(
+        User $user,
+        string $uuid,
+        string $binary,
+        ?string $thumbNonce,
+        string $thumbMime = 'image/jpeg',
+    ): array {
+        $media = $this->accessService->requireMedia($uuid);
+        $this->accessService->assertOwner($user, $media);
+
+        if ($media->status !== 'active' && $media->status !== 'pending_upload') {
+            throw ValidationException::withMessages([
+                'media' => ['Thumbnail can only be uploaded for pending or active files.'],
+            ]);
+        }
+
+        if ($binary === '') {
+            throw ValidationException::withMessages([
+                'thumbnail' => ['Thumbnail payload is empty.'],
+            ]);
+        }
+
+        // Keep thumbs tiny — reject anything over 256 KB ciphertext.
+        if (strlen($binary) > 256 * 1024) {
+            throw ValidationException::withMessages([
+                'thumbnail' => ['Thumbnail is too large.'],
+            ]);
+        }
+
+        $thumbKey = $media->s3_key.'.thumb';
+        Storage::disk((string) config('media.disk'))->put($thumbKey, $binary);
+
+        $metadata = is_array($media->metadata) ? $media->metadata : [];
+        $metadata['has_thumbnail'] = true;
+        $metadata['thumb_mime'] = $thumbMime;
+        if (is_string($thumbNonce) && $thumbNonce !== '') {
+            $metadata['thumb_nonce'] = $thumbNonce;
+        }
+
+        $media->update([
+            'thumbnail_s3_key' => $thumbKey,
+            'thumbnail_size_bytes' => strlen($binary),
+            'metadata' => $metadata,
+        ]);
+
+        return $this->formatMedia($media->fresh(), $user);
+    }
+
+    public function downloadThumbnail(User $user, string $uuid): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        $media = $this->accessService->requireMedia($uuid);
+        $this->accessService->assertCanView($user, $media);
+
+        if ($media->status !== 'active') {
+            throw ValidationException::withMessages([
+                'media' => ['File is not available for download.'],
+            ]);
+        }
+
+        if (! $media->hasThumbnail()) {
+            throw ValidationException::withMessages([
+                'thumbnail' => ['No thumbnail is available for this file.'],
+            ]);
+        }
+
+        $disk = Storage::disk((string) config('media.disk'));
+
+        return response()->streamDownload(function () use ($disk, $media) {
+            echo $disk->get($media->thumbnail_s3_key);
+        }, ($media->display_name ?? $media->uuid).'.thumb', [
+            'Content-Type' => 'application/octet-stream',
+            'X-Media-Has-Thumbnail' => '1',
+        ]);
     }
 
     private function storageKey(User $user, string $uuid): string
@@ -336,6 +548,45 @@ class MediaUploadService
 
         if (! empty($metadata['group_uuid'])) {
             $normalized['group_uuid'] = (string) $metadata['group_uuid'];
+        }
+
+        if (! empty($metadata['storage_mode'])) {
+            $storageMode = (string) $metadata['storage_mode'];
+            if (in_array($storageMode, ['sender', 'co_owner'], true)) {
+                $normalized['storage_mode'] = $storageMode;
+            }
+        }
+
+        if (! empty($metadata['thumb_nonce'])) {
+            $normalized['thumb_nonce'] = (string) $metadata['thumb_nonce'];
+        }
+
+        if (array_key_exists('has_thumbnail', $metadata)) {
+            $normalized['has_thumbnail'] = (bool) $metadata['has_thumbnail'];
+        }
+
+        if (! empty($metadata['thumb_mime'])) {
+            $normalized['thumb_mime'] = (string) $metadata['thumb_mime'];
+        }
+
+        if (array_key_exists('has_stream', $metadata)) {
+            $normalized['has_stream'] = (bool) $metadata['has_stream'];
+        }
+
+        if (isset($metadata['stream_chunk_count'])) {
+            $normalized['stream_chunk_count'] = max(0, (int) $metadata['stream_chunk_count']);
+        }
+
+        if (isset($metadata['stream_chunk_size'])) {
+            $normalized['stream_chunk_size'] = max(1, (int) $metadata['stream_chunk_size']);
+        }
+
+        if (isset($metadata['stream_total_bytes'])) {
+            $normalized['stream_total_bytes'] = max(0, (int) $metadata['stream_total_bytes']);
+        }
+
+        if (isset($metadata['stream_version'])) {
+            $normalized['stream_version'] = max(1, (int) $metadata['stream_version']);
         }
 
         return $normalized === [] ? null : $normalized;
@@ -442,11 +693,18 @@ class MediaUploadService
             'media_event_title' => $media->event?->title,
             'created_at' => $media->created_at?->toIso8601String(),
             'is_owned' => $isOwned,
+            'has_thumbnail' => $media->hasThumbnail(),
+            'thumbnail_size_bytes' => $media->thumbnail_size_bytes,
+            'has_stream' => (bool) (($media->metadata['has_stream'] ?? false) === true),
         ];
 
         if ($viewer !== null) {
             $payload['is_co_owner'] = $isOwned && $this->accessService->isCoOwner($viewer, $media)
                 && ! $this->accessService->isOwner($viewer, $media);
+            $payload['is_unseen'] = app(MediaShareInboxService::class)
+                ->isUnseenForUser($viewer, $media->uuid);
+        } else {
+            $payload['is_unseen'] = false;
         }
 
         return $payload;

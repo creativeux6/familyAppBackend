@@ -24,7 +24,7 @@ class StoreMediaEventRequest extends FormRequest
             'ends_at' => ['sometimes', 'nullable', 'date', 'after_or_equal:starts_at'],
             'timezone' => ['sometimes', 'nullable', 'string', 'max:64'],
             'currency' => ['sometimes', 'string', 'size:3'],
-            'notes' => ['sometimes', 'nullable', 'string', 'max:5000'],
+            'scope' => ['sometimes', 'string', 'in:private,gallery'],
         ];
     }
 }

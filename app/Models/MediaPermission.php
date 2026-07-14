@@ -13,7 +13,15 @@ class MediaPermission extends Model
         'group_uuid',
         'access',
         'granted_by_user_id',
+        'seen_at',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'seen_at' => 'datetime',
+        ];
+    }
 
     public function mediaFile(): BelongsTo
     {

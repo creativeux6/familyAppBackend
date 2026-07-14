@@ -39,9 +39,14 @@ class MediaEvent extends Model
 
     public const STATUS_ARCHIVED = 'archived';
 
+    public const SCOPE_PRIVATE = 'private';
+
+    public const SCOPE_GALLERY = 'gallery';
+
     protected $fillable = [
         'uuid',
         'owner_user_id',
+        'scope',
         'title',
         'description',
         'event_date',

@@ -5,18 +5,20 @@ namespace App\Modules\Media\Services;
 use App\Models\MediaKeyEnvelope;
 use App\Models\MediaPermission;
 use App\Models\User;
+use App\Modules\Media\Events\MediaSharedWithUser;
 use Illuminate\Validation\ValidationException;
 
 class MediaPermissionService
 {
     public function __construct(
         private readonly MediaAccessService $accessService,
+        private readonly MediaCoOwnerService $coOwnerService,
     ) {}
 
-    public function grantToUser(User $owner, string $mediaUuid, string $targetUserUuid, string $access = 'view'): array
+    public function grantToUser(User $owner, string $mediaUuid, string $targetUserUuid, string $access = 'view', bool $notify = true): array
     {
         $media = $this->accessService->requireMedia($mediaUuid);
-        $this->accessService->assertOwner($owner, $media);
+        $this->accessService->assertCanShare($owner, $media);
 
         if ($media->status !== 'active') {
             throw ValidationException::withMessages([
@@ -36,8 +38,23 @@ class MediaPermissionService
             [
                 'access' => $access,
                 'granted_by_user_id' => $owner->id,
+                'seen_at' => null,
             ]
         );
+
+        if ($access === 'owner') {
+            $this->coOwnerService->ensureLibraryItemForUser($recipient->id, $media);
+        }
+
+        if ($notify) {
+            event(new MediaSharedWithUser(
+                $owner,
+                $recipient,
+                $media->uuid,
+                $access,
+                (string) ($media->display_name ?: 'a file'),
+            ));
+        }
 
         return $this->formatPermission($permission->load('user:id,uuid,display_name'));
     }
@@ -45,7 +62,7 @@ class MediaPermissionService
     public function grantToGroup(User $owner, string $mediaUuid, string $groupUuid, string $access = 'view'): array
     {
         $media = $this->accessService->requireMedia($mediaUuid);
-        $this->accessService->assertOwner($owner, $media);
+        $this->accessService->assertCanShare($owner, $media);
         $this->accessService->assertCanGrantToGroup($owner, $groupUuid);
 
         if ($media->status !== 'active') {
@@ -72,7 +89,7 @@ class MediaPermissionService
     public function revoke(User $owner, string $mediaUuid, int $permissionId): array
     {
         $media = $this->accessService->requireMedia($mediaUuid);
-        $this->accessService->assertOwner($owner, $media);
+        $this->accessService->assertCanShare($owner, $media);
 
         $permission = MediaPermission::query()
             ->where('id', $permissionId)
@@ -94,7 +111,7 @@ class MediaPermissionService
     public function storeEnvelopes(User $owner, string $mediaUuid, array $envelopes, int $version = 1): array
     {
         $media = $this->accessService->requireMedia($mediaUuid);
-        $this->accessService->assertOwner($owner, $media);
+        $this->accessService->assertCanShare($owner, $media);
 
         $stored = 0;
 

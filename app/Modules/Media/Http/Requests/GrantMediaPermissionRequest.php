@@ -17,6 +17,7 @@ class GrantMediaPermissionRequest extends FormRequest
             'user_uuid' => ['required_without:group_uuid', 'uuid'],
             'group_uuid' => ['required_without:user_uuid', 'uuid'],
             'access' => ['sometimes', 'in:view,owner'],
+            'notify' => ['sometimes', 'boolean'],
         ];
     }
 }
