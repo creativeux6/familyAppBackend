@@ -45,8 +45,27 @@ class SessionController extends Controller
     )]
     public function refresh(Request $request): JsonResponse
     {
-        $result = $this->phoneAuthService->refresh($request->user());
+        $tokenName = $request->header('X-Client') === 'web' ? 'web' : 'mobile';
+        $result = $this->phoneAuthService->refresh($request->user(), $tokenName);
 
         return response()->json($result);
+    }
+
+    #[OA\Get(
+        path: '/auth/me',
+        operationId: 'authMe',
+        summary: 'Current authenticated user with roles',
+        tags: ['Auth'],
+        security: [['bearerAuth' => []]],
+        responses: [
+            new OA\Response(response: 200, description: 'Current user'),
+            new OA\Response(response: 401, description: 'Unauthenticated'),
+        ]
+    )]
+    public function me(Request $request): JsonResponse
+    {
+        return response()->json([
+            'user' => $this->phoneAuthService->me($request->user()),
+        ]);
     }
 }

@@ -148,9 +148,15 @@ class AdminUserService
     {
         $user = $this->requireUser($uuid);
 
-        if ($user->id === $admin->id && $roleName === 'admin') {
+        if ($user->id === $admin->id && in_array($roleName, ['admin', 'super_admin'], true)) {
             throw ValidationException::withMessages([
                 'role' => ['You cannot remove your own admin role.'],
+            ]);
+        }
+
+        if ($roleName === 'super_admin' && ! $admin->hasRole('super_admin')) {
+            throw ValidationException::withMessages([
+                'role' => ['Only a super admin can remove the super_admin role.'],
             ]);
         }
 

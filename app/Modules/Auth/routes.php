@@ -7,6 +7,12 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('auth')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login', [AuthController::class, 'login']);
-    Route::post('/logout', [SessionController::class, 'logout'])->middleware('auth:sanctum');
-    Route::post('/refresh', [SessionController::class, 'refresh'])->middleware('auth:sanctum');
+    Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
+    Route::post('/reset-password', [AuthController::class, 'resetPassword']);
+
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::get('/me', [SessionController::class, 'me']);
+        Route::post('/logout', [SessionController::class, 'logout']);
+        Route::post('/refresh', [SessionController::class, 'refresh']);
+    });
 });

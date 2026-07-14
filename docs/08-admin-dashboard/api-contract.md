@@ -1,12 +1,35 @@
-# Admin Dashboard — API Contract
+# Admin / Web Panel — API Contract
 
-Base path: `/api/v1/admin` (requires Bearer token + **`admin` role`)
+Base path for operator APIs: `/api/v1/admin`  
+**Required:** Bearer token + Spatie role **`super_admin` or `admin`**.
 
-React admin UI (Phase 2) consumes these APIs. Storage plan admin lives under `/admin/storage/*` (see [07-storage-plans](../07-storage-plans/api-contract.md)).
+Web panel UI lives at **`/web`** (Laravel + React SPA). Mobile continues to use the same `/api/v1` feature APIs. Legacy `/panel` redirects to `/web`.
 
-## GET /dashboard
+## Roles (Spatie)
 
-Platform overview metrics.
+| Role | Panel home | Can open Logs | Notes |
+|------|------------|---------------|--------|
+| `super_admin` | Stats dashboard | Yes | Can assign `super_admin` role |
+| `admin` | Stats dashboard | Yes | Cannot assign `super_admin` |
+| `user` | App-style home | No | Default for self-register |
+
+Self-register (`POST /auth/register`) **always** assigns `user`. Admin/super_admin are never created from the register page.
+
+### Auth additions (panel + mobile)
+
+| Method | Path | Auth | Notes |
+|--------|------|------|--------|
+| GET | `/auth/me` | Bearer | User + `roles[]` + `permissions[]` |
+| POST | `/auth/forgot-password` | Public | `{ phone }` — local env may return `reset_token` |
+| POST | `/auth/reset-password` | Public | `{ phone, token, password, password_confirmation }` |
+| POST | `/auth/login` | Public | Response includes roles; send `X-Client: web` for panel token name |
+| POST | `/auth/register` | Public | Always creates `user` role |
+
+---
+
+## GET /admin/dashboard
+
+Platform overview metrics (unchanged).
 
 **Response 200:**
 ```json
@@ -20,77 +43,88 @@ Platform overview metrics.
 }
 ```
 
-## GET /users
+---
 
-Paginated user list.
+## System logs (Phase 1)
 
-**Query:** `search` (phone or display name), `page`, `per_page` (max 50), `include_trashed` (boolean)
+Server/API failures are written to `system_error_logs` when unhandled 5xx / `Error` occurs on `/api/*`.
 
-## GET /users/{uuid}
+### GET /admin/system-logs
 
-User detail: profile, storage usage, family member link, roles, active plan assignment.
+**Query:** `path`, `status_code`, `user_uuid`, `from`, `to`, `page`, `per_page` (max 50)
 
-## PATCH /users/{uuid}
+**Response 200:** paginated `{ data: [...], meta: {...} }`  
+Each row: `uuid`, `occurred_at`, `method`, `path`, `status_code`, `exception_class`, `message`, `user` `{ uuid, display_name, phone } | null`.
 
-Update user fields (admin moderation).
+### GET /admin/system-logs/{uuid}
 
-**Request:**
+Full detail including `trace`, `request_id`, `ip_address`.
+
+### GET /admin/websocket-health
+
+Returns overall status plus a **per-socket listing**.
+
+**Response 200:**
 ```json
 {
-  "display_name": "Updated Name",
-  "is_anonymous": false
+  "status": "ok|degraded|down",
+  "checked_at": "...",
+  "summary": { "total": 8, "ok": 6, "degraded": 1, "down": 1 },
+  "sockets": [
+    {
+      "id": "reverb_server",
+      "name": "Reverb server",
+      "type": "tcp",
+      "description": "Laravel Reverb process (TCP bind)",
+      "endpoint": "127.0.0.1:8080",
+      "status": "ok|degraded|down",
+      "latency_ms": 3,
+      "message": "Port is reachable"
+    }
+  ],
+  "connection": {
+    "host": "127.0.0.1",
+    "client_host": "localhost",
+    "port": 8080,
+    "client_port": 8080,
+    "scheme": "http",
+    "reachable": true,
+    "app_key_set": true,
+    "broadcast_driver": "reverb",
+    "auth_endpoint": "https://.../broadcasting/auth"
+  },
+  "log_path": "/var/log/familyapp/reverb.log",
+  "log_readable": false,
+  "recent_errors": []
 }
 ```
 
-## DELETE /users/{uuid}
+Socket checks include: Reverb server TCP, Reverb client endpoint, broadcasting auth HTTP, groups realtime config API, `private-group.*` / `private-user.*` channel registration, broadcast driver + app key.
 
-Soft-delete user (ban). Revokes active Sanctum tokens.
+Optional env: `REVERB_LOG_PATH` for Reverb log tailing.
 
-## POST /users/{uuid}/restore
-
-Restore a soft-deleted user.
-
-## POST /users/{uuid}/roles
-
-Assign a role.
-
-**Request:** `{ "role": "admin" }`
-
-## DELETE /users/{uuid}/roles/{role}
-
-Remove a role from user.
+Web UI lives at **`/web`** (legacy `/panel` redirects here).
 
 ---
 
-## GET /audit-logs
+## Users / audit / abuse (existing)
 
-Paginated audit trail.
+Same as before under `/admin/users`, `/admin/audit-logs`, `/admin/abuse-reports`.
 
-**Query:** `action`, `actor_user_uuid`, `page`, `per_page`
+### POST /admin/users/{uuid}/roles
 
-## GET /abuse-reports
+**Request:** `{ "role": "admin" | "user" | "super_admin" }`  
+`super_admin` may only be assigned by an actor who already has `super_admin`.
 
-List abuse reports.
-
-**Query:** `status` — `open` | `reviewing` | `resolved` | `dismissed`
-
-## PATCH /abuse-reports/{uuid}
-
-Update report status.
-
-**Request:**
-```json
-{
-  "status": "resolved"
-}
-```
+Storage plan admin: `/admin/storage/*` (see [07-storage-plans](../07-storage-plans/api-contract.md)) — same `super_admin|admin` gate.
 
 ---
 
-## Dev access
+## Phase 2 (planned — not built)
 
-After `php artisan migrate --seed`, user `+923001234567` / `password` has the `admin` role.
+**Users in panel:** gallery, events, calendar, connections, groups — same mobile `/api/v1` APIs.
 
-## Status
+**Admins / super_admin:**
 
-Implemented in `app/Modules/Admin/`. Swagger tag **Admin**.
+- User management UI (list, suspend/restore) — API already exists
+- Storage space & plans management UI — `/admin/storage/*` already exists

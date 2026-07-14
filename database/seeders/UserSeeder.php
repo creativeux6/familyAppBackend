@@ -28,6 +28,12 @@ class UserSeeder extends Seeder
                 'phone' => '+923009876543',
                 'password' => 'password',
             ],
+            [
+                'display_name' => 'Super Admin',
+                'phone' => '+923009999999',
+                'password' => 'password',
+                'email' => 'superadmin@example.com',
+            ],
         ];
 
         foreach ($devUsers as $data) {

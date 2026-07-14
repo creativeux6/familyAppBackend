@@ -10,7 +10,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/plans', [StorageQuotaController::class, 'plans']);
     });
 
-    Route::prefix('admin/storage')->middleware('role:admin')->group(function () {
+    Route::prefix('admin/storage')->middleware('role:super_admin|admin')->group(function () {
         Route::get('/plans', [AdminStoragePlanController::class, 'index']);
         Route::post('/plans', [AdminStoragePlanController::class, 'store']);
         Route::patch('/plans/{uuid}', [AdminStoragePlanController::class, 'update']);

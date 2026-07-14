@@ -3,8 +3,10 @@
 namespace App\Modules\Auth\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Auth\Http\Requests\ForgotPasswordRequest;
 use App\Modules\Auth\Http\Requests\LoginRequest;
 use App\Modules\Auth\Http\Requests\RegisterRequest;
+use App\Modules\Auth\Http\Requests\ResetPasswordRequest;
 use App\Modules\Auth\Services\PhoneAuthService;
 use Illuminate\Http\JsonResponse;
 use OpenApi\Attributes as OA;
@@ -19,7 +21,7 @@ class AuthController extends Controller
         path: '/auth/register',
         operationId: 'authRegister',
         summary: 'Register a new account',
-        description: 'Creates a user with phone and password, returns a Sanctum Bearer token.',
+        description: 'Creates a user with phone and password, assigns the user role, returns a Sanctum Bearer token.',
         tags: ['Auth'],
         requestBody: new OA\RequestBody(
             required: true,
@@ -51,10 +53,13 @@ class AuthController extends Controller
     )]
     public function register(RegisterRequest $request): JsonResponse
     {
+        $tokenName = $request->header('X-Client') === 'web' ? 'web' : 'mobile';
+
         $result = $this->phoneAuthService->register(
             $request->validated('phone'),
             $request->validated('display_name'),
             $request->validated('password'),
+            $tokenName,
         );
 
         return response()->json($result, 201);
@@ -94,11 +99,32 @@ class AuthController extends Controller
     )]
     public function login(LoginRequest $request): JsonResponse
     {
+        $tokenName = $request->header('X-Client') === 'web' ? 'web' : 'mobile';
+
         $result = $this->phoneAuthService->login(
             $request->validated('phone'),
             $request->validated('password'),
+            $tokenName,
         );
 
         return response()->json($result);
+    }
+
+    public function forgotPassword(ForgotPasswordRequest $request): JsonResponse
+    {
+        return response()->json(
+            $this->phoneAuthService->forgotPassword($request->validated('phone'))
+        );
+    }
+
+    public function resetPassword(ResetPasswordRequest $request): JsonResponse
+    {
+        return response()->json(
+            $this->phoneAuthService->resetPassword(
+                $request->validated('phone'),
+                $request->validated('token'),
+                $request->validated('password'),
+            )
+        );
     }
 }
