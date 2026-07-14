@@ -177,15 +177,18 @@ class FamilyTreeService
             );
 
             $relationIndex = match ($relationType) {
-                'child' => $this->memberGraph->childrenOf($selfMember->uuid)->count() - 1,
-                'sibling' => $this->memberGraph->siblingsOf($selfMember->uuid, $user)->count() - 1,
+                'child', 'sibling' => $this->declaredRelatives->nextRelationIndex(
+                    $user,
+                    $relationType,
+                    $member->uuid,
+                ),
                 default => 0,
             };
 
             $this->declaredRelatives->upsertDeclared(
                 $user,
                 $relationType,
-                max(0, $relationIndex),
+                $relationIndex,
                 $data,
                 $member->uuid,
             );

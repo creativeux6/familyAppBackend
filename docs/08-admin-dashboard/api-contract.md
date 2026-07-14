@@ -47,11 +47,13 @@ Platform overview metrics (unchanged).
 
 ## System logs (Phase 1)
 
-Server/API failures are written to `system_error_logs` when unhandled 5xx / `Error` occurs on `/api/*`.
+Every `/api/*` response is written to `system_error_logs` (success **2xx** and failures **4xx/5xx**), including duration and a truncated JSON body when present.  
+Client-reported failures that never reach Laravel (e.g. nginx **413**) are stored via `POST /client-errors`.  
+Admin log list/detail endpoints themselves are excluded to avoid recursion.
 
 ### GET /admin/system-logs
 
-**Query:** `path`, `status_code`, `user_uuid`, `from`, `to`, `page`, `per_page` (max 50)
+**Query:** `q` (search message/exception/path/status), `path`, `status_code`, `user_uuid`, `from`, `to`, `page`, `per_page` (default **20**, max 50)
 
 **Response 200:** paginated `{ data: [...], meta: {...} }`  
 Each row: `uuid`, `occurred_at`, `method`, `path`, `status_code`, `exception_class`, `message`, `user` `{ uuid, display_name, phone } | null`.

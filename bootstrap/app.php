@@ -21,37 +21,53 @@ return Application::configure(basePath: dirname(__DIR__))
             'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
         ]);
+
+        // Outermost API middleware so auth / validation failures are still logged.
+        $middleware->api(prepend: [
+            \App\Http\Middleware\LogApiResponse::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*'),
         );
 
+        // Fallback for failures that bypass the middleware catch (should be rare).
         $exceptions->reportable(function (\Throwable $e): void {
             $request = request();
             if (! $request instanceof Request || ! $request->is('api/*')) {
                 return;
             }
 
-            $status = method_exists($e, 'getStatusCode')
-                ? (int) $e->getStatusCode()
-                : 500;
+            if ($request->attributes->get('api_response_logged')) {
+                return;
+            }
 
-            // Persist server/debug failures and unhandled errors for the admin Logs page.
-            if ($status < 500 && ! $e instanceof \Error) {
+            if (
+                $request->is('api/*/client-errors')
+                || $request->is('*/client-errors')
+                || $request->is('api/*/admin/system-logs*')
+                || $request->is('*/admin/system-logs*')
+            ) {
+                return;
+            }
+
+            $status = \App\Modules\Admin\Services\SystemErrorLogService::resolveStatus($e);
+            if ($status < 400) {
                 return;
             }
 
             try {
-                app(\App\Modules\Admin\Services\SystemErrorLogService::class)->record(
+                app(\App\Modules\Admin\Services\SystemErrorLogService::class)->recordException(
                     $e,
                     $request->user(),
                     $request->method(),
                     '/'.$request->path(),
-                    $status >= 400 ? $status : 500,
+                    $status,
                     $request->ip(),
                     $request->header('X-Request-Id') ?: (string) Str::uuid(),
                 );
+                $request->attributes->set('api_response_logged', true);
             } catch (\Throwable) {
                 // ignore
             }

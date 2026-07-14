@@ -684,4 +684,25 @@ class FamilyMatcherService
 
         return $score;
     }
+
+    /**
+     * Exact full-name match (first + last), case-insensitive.
+     * Used to block duplicate siblings/children — never last-name-only.
+     *
+     * @param  array<string, mixed>  $answer
+     */
+    public function isSameNamedPerson(array $answer, FamilyMember $member): bool
+    {
+        $first = trim((string) ($answer['first_name'] ?? ''));
+        $last = trim((string) ($answer['last_name'] ?? ''));
+        $memberFirst = trim((string) ($member->first_name ?? ''));
+        $memberLast = trim((string) ($member->last_name ?? ''));
+
+        if ($first === '' || $last === '' || $memberFirst === '' || $memberLast === '') {
+            return false;
+        }
+
+        return strcasecmp($first, $memberFirst) === 0
+            && strcasecmp($last, $memberLast) === 0;
+    }
 }

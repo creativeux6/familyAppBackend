@@ -295,6 +295,31 @@ class DeclaredRelativeService
     }
 
     /**
+     * Reuse the declared row for this member when editing; otherwise allocate the next free index.
+     */
+    public function nextRelationIndex(User $user, string $relationType, ?string $memberUuid = null): int
+    {
+        if ($memberUuid) {
+            $existing = UserDeclaredRelative::query()
+                ->where('user_id', $user->id)
+                ->where('relation_type', $relationType)
+                ->where('member_uuid', $memberUuid)
+                ->value('relation_index');
+
+            if ($existing !== null) {
+                return (int) $existing;
+            }
+        }
+
+        $max = UserDeclaredRelative::query()
+            ->where('user_id', $user->id)
+            ->where('relation_type', $relationType)
+            ->max('relation_index');
+
+        return $max === null ? 0 : ((int) $max + 1);
+    }
+
+    /**
      * @param  array<string, mixed>  $selfAnswer
      * @return list<array<string, mixed>>
      */

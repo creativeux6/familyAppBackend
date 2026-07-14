@@ -19,10 +19,13 @@ class AdminSystemLogController extends Controller
     {
         return response()->json($this->logService->list(
             $request->query('path'),
-            $request->query('status_code') !== null ? (int) $request->query('status_code') : null,
+            $request->query('status_code') !== null && $request->query('status_code') !== ''
+                ? (int) $request->query('status_code')
+                : null,
             $request->query('user_uuid'),
             $request->query('from'),
             $request->query('to'),
+            $request->query('q') ?? $request->query('search'),
             max(1, (int) $request->query('page', 1)),
             min(50, max(1, (int) $request->query('per_page', 20))),
         ));

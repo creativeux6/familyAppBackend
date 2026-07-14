@@ -11,6 +11,7 @@ use App\Modules\FamilyTree\Exceptions\DuplicateMemberCandidateException;
 use App\Modules\Onboarding\Services\FamilyMatcherService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class FamilyMemberGraphService
 {
@@ -737,6 +738,13 @@ class FamilyMemberGraphService
         if (! empty($data['uuid'])) {
             $existing = FamilyMember::query()->find($data['uuid']);
             if ($existing && $existing->family_uuid === $selfMember->family_uuid) {
+                $this->assertNoFullNameCollision(
+                    $this->siblingsOf($selfMember->uuid),
+                    $data,
+                    'sibling',
+                    $existing->uuid,
+                );
+
                 $existing->update([
                     'first_name' => $data['first_name'] ?? $existing->first_name,
                     'last_name' => $data['last_name'] ?? $existing->last_name,
@@ -749,24 +757,11 @@ class FamilyMemberGraphService
             }
         }
 
-        $matchedSibling = $this->siblingsOf($selfMember->uuid)
-            ->sortByDesc(fn (FamilyMember $candidate) => $this->matcher->scoreAnswer($data, $candidate))
-            ->first(
-                fn (FamilyMember $candidate) => $this->matcher->scoreAnswer($data, $candidate)
-                    >= FamilyMatcherService::SELF_STUB_THRESHOLD
-            );
-
-        if ($matchedSibling) {
-            $matchedSibling->update([
-                'first_name' => $data['first_name'] ?? $matchedSibling->first_name,
-                'last_name' => $data['last_name'] ?? $matchedSibling->last_name,
-                'date_of_birth' => $data['date_of_birth'] ?? $matchedSibling->date_of_birth,
-                'gender' => $data['gender'] ?? $matchedSibling->gender,
-                ...$this->vitalityAttributes($data, $matchedSibling),
-            ]);
-
-            return $matchedSibling->fresh();
-        }
+        $this->assertNoFullNameCollision(
+            $this->siblingsOf($selfMember->uuid),
+            $data,
+            'sibling',
+        );
 
         $this->guardAgainstDuplicateCreate($selfMember, $data, 'sibling');
 
@@ -789,6 +784,13 @@ class FamilyMemberGraphService
         if (! empty($data['uuid'])) {
             $existing = FamilyMember::query()->find($data['uuid']);
             if ($existing && $existing->family_uuid === $selfMember->family_uuid) {
+                $this->assertNoFullNameCollision(
+                    $this->childrenOf($selfMember->uuid),
+                    $data,
+                    'child',
+                    $existing->uuid,
+                );
+
                 $existing->update([
                     'first_name' => $data['first_name'] ?? $existing->first_name,
                     'last_name' => $data['last_name'] ?? $existing->last_name,
@@ -801,24 +803,11 @@ class FamilyMemberGraphService
             }
         }
 
-        $matchedChild = $this->childrenOf($selfMember->uuid)
-            ->sortByDesc(fn (FamilyMember $candidate) => $this->matcher->scoreAnswer($data, $candidate))
-            ->first(
-                fn (FamilyMember $candidate) => $this->matcher->scoreAnswer($data, $candidate)
-                    >= FamilyMatcherService::SELF_STUB_THRESHOLD
-            );
-
-        if ($matchedChild) {
-            $matchedChild->update([
-                'first_name' => $data['first_name'] ?? $matchedChild->first_name,
-                'last_name' => $data['last_name'] ?? $matchedChild->last_name,
-                'date_of_birth' => $data['date_of_birth'] ?? $matchedChild->date_of_birth,
-                'gender' => $data['gender'] ?? $matchedChild->gender,
-                ...$this->vitalityAttributes($data, $matchedChild),
-            ]);
-
-            return $matchedChild->fresh();
-        }
+        $this->assertNoFullNameCollision(
+            $this->childrenOf($selfMember->uuid),
+            $data,
+            'child',
+        );
 
         $this->guardAgainstDuplicateCreate($selfMember, $data, 'child');
 
@@ -832,6 +821,42 @@ class FamilyMemberGraphService
             ...$this->vitalityAttributes($data),
             'user_id' => null,
             'match_confidence' => 0,
+        ]);
+    }
+
+    /**
+     * Never auto-replace siblings/children that share the same full name.
+     *
+     * @param  Collection<int, FamilyMember>|iterable<FamilyMember>  $relatives
+     * @param  array<string, mixed>  $data
+     */
+    private function assertNoFullNameCollision(
+        iterable $relatives,
+        array $data,
+        string $relationLabel,
+        ?string $ignoreUuid = null,
+    ): void {
+        $match = collect($relatives)->first(
+            function (FamilyMember $candidate) use ($data, $ignoreUuid) {
+                if ($ignoreUuid !== null && $candidate->uuid === $ignoreUuid) {
+                    return false;
+                }
+
+                return $this->matcher->isSameNamedPerson($data, $candidate);
+            }
+        );
+
+        if (! $match) {
+            return;
+        }
+
+        $fullName = trim($match->first_name.' '.$match->last_name);
+        $label = $relationLabel === 'child' ? 'child' : 'sibling';
+
+        throw ValidationException::withMessages([
+            'first_name' => [
+                "{$fullName} is already added as your {$label}. Use a different full name, or edit the existing person.",
+            ],
         ]);
     }
 

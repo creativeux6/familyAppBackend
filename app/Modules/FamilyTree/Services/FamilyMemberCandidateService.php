@@ -193,7 +193,8 @@ class FamilyMemberCandidateService
                 && $score >= FamilyMatcherService::SELF_STUB_THRESHOLD;
         }
 
-        return $score >= FamilyMatcherService::SELF_STUB_THRESHOLD;
+        // Shared surname alone is not a duplicate (common for siblings/children).
+        return $this->matcher->isSameNamedPerson($answer, $member);
     }
 
     /** @param  array<string, mixed>  $answer */

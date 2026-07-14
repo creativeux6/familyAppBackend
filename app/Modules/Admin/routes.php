@@ -5,7 +5,14 @@ use App\Modules\Admin\Http\Controllers\AdminAuditLogController;
 use App\Modules\Admin\Http\Controllers\AdminDashboardController;
 use App\Modules\Admin\Http\Controllers\AdminSystemLogController;
 use App\Modules\Admin\Http\Controllers\AdminUserController;
+use App\Modules\Admin\Http\Controllers\ClientErrorReportController;
 use Illuminate\Support\Facades\Route;
+
+// Any signed-in client can report failures that never hit Laravel (e.g. nginx 413).
+Route::middleware(['auth:sanctum'])->post(
+    '/client-errors',
+    [ClientErrorReportController::class, 'store'],
+);
 
 Route::middleware(['auth:sanctum', 'role:super_admin|admin'])->prefix('admin')->group(function () {
     Route::get('/dashboard', [AdminDashboardController::class, 'index']);
