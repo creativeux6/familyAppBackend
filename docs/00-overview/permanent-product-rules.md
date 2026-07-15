@@ -22,6 +22,9 @@ Details: [12-encryption-and-keys/key-continuity.md](../12-encryption-and-keys/ke
 | Seed a **Free** plan with **5 GB** (`5 * 1024^3` bytes) | Use `MEDIA_DEFAULT_QUOTA_BYTES` (or any env) as the free-tier quota source of truth |
 | Assign Free plan to **every new registered user** | Leave new users with `quota_bytes = 0` / unlimited by default |
 | Let admins change plans/quotas in the **admin plans** UI | Hard-code paid Stripe/payment in v1 (payment flow is **next versions**) |
+| Plans have a **billing period** (when **price** is charged): Free = **yearly**, others = **monthly** by default | Leave assignments with `ends_at = null` (no next bill date) |
+| Set `ends_at` = next billing date from the plan period; advance it via `storage:renew-plans` | Reset **quota**, wipe `storage_used_bytes` / `storage_read_bytes`, or re-assign storage on bill cycle |
+| Assigned **quota stays the plan’s `quota_bytes`** for the whole assignment — only price renews on the interval | Treat billing renewal as “fresh storage” or a new quota grant |
 | When used ≥ quota: **block gallery item access** + uploads; show subscribe CTA | Delete user media/chat automatically to “free space”; silently allow unlimited uploads |
 | Keep all stored media/chat on the server when over quota (access gate only) | Soft-block **chat** playback when over quota |
 

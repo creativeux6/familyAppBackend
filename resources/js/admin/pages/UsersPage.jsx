@@ -210,7 +210,7 @@ export function UsersPage() {
                 <th className="px-4 py-3">Plan</th>
                 <th className="px-4 py-3">Quota</th>
                 <th className="px-4 py-3">Usage</th>
-                <th className="px-4 py-3">Renewal</th>
+                <th className="px-4 py-3">Next bill</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Actions</th>
               </tr>
@@ -241,7 +241,11 @@ export function UsersPage() {
                       <td className="px-4 py-3 font-mono text-xs text-slate-600">{user.phone}</td>
                       <td className="px-4 py-3 text-slate-700">
                         <div className="font-medium">{user.plan_name || '—'}</div>
-                        {user.plan_source ? (
+                        {user.billing_period_label ? (
+                          <div className="mt-0.5 text-[11px] text-slate-400">
+                            {user.billing_period_label}
+                          </div>
+                        ) : user.plan_source ? (
                           <div className="mt-0.5 text-[11px] text-slate-400">{user.plan_source}</div>
                         ) : null}
                       </td>
@@ -257,9 +261,7 @@ export function UsersPage() {
                       <td className="whitespace-nowrap px-4 py-3 text-slate-600">
                         {user.renewal_date
                           ? new Date(user.renewal_date).toLocaleDateString()
-                          : user.plan_name
-                            ? 'No end date'
-                            : '—'}
+                          : '—'}
                       </td>
                       <td className="px-4 py-3">
                         <span
@@ -369,12 +371,26 @@ export function UsersPage() {
                 )}
               </div>
               <div>
-                Renewal:{' '}
-                {selected.plan_assignment?.ends_at
-                  ? new Date(selected.plan_assignment.ends_at).toLocaleString()
-                  : selected.storage?.plan || selected.plan_assignment
-                    ? 'No end date'
-                    : '—'}
+                Next bill date:{' '}
+                {selected.plan_assignment?.ends_at || selected.plan_assignment?.renewal_date
+                  ? new Date(
+                      selected.plan_assignment.ends_at ||
+                        selected.plan_assignment.renewal_date,
+                    ).toLocaleString()
+                  : '—'}
+                {(selected.storage?.plan?.billing_period_label ||
+                  selected.plan_assignment?.plan?.billing_period_label) && (
+                  <span className="text-slate-500">
+                    {' '}
+                    (
+                    {selected.storage?.plan?.billing_period_label ||
+                      selected.plan_assignment?.plan?.billing_period_label}{' '}
+                    price cycle)
+                  </span>
+                )}
+              </div>
+              <div className="text-xs text-slate-500">
+                Quota stays as assigned by the plan. Billing does not reset stored or read usage.
               </div>
               <div>
                 Storage:{' '}

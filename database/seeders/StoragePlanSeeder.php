@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\StoragePlan;
 use App\Models\User;
 use App\Models\UserPlanAssignment;
+use App\Modules\StoragePlans\Services\PlanAssignmentService;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Str;
 
@@ -16,30 +17,34 @@ class StoragePlanSeeder extends Seeder
             [
                 'name' => 'Free',
                 'slug' => 'free',
-                'description' => 'Default plan for every new account. 5 GB combined storage and read/egress quota. Upgrade when you need more space.',
+                'description' => 'Default plan for every new account. 5 GB combined storage and read/egress. Renews yearly.',
                 'quota_bytes' => 5 * 1024 * 1024 * 1024,
                 'display_price_cents' => 0,
+                'billing_period' => PlanAssignmentService::PERIOD_YEARLY,
                 'sort_order' => 10,
             ],
             [
                 'name' => 'Family',
                 'slug' => 'family',
-                'description' => 'Shared family media with 10 GB combined upload and read quota. Assigned by an admin until paid billing ships.',
+                'description' => 'Shared family media with 10 GB combined upload and read quota. Renews monthly.',
                 'quota_bytes' => 10 * 1024 * 1024 * 1024,
                 'display_price_cents' => 0,
+                'billing_period' => PlanAssignmentService::PERIOD_MONTHLY,
                 'sort_order' => 20,
             ],
             [
                 'name' => 'Premium',
                 'slug' => 'premium',
-                'description' => 'High-capacity plan with 50 GB combined upload and read quota for frequent gallery and video use.',
+                'description' => 'High-capacity plan with 50 GB combined upload and read quota. Renews monthly.',
                 'quota_bytes' => 50 * 1024 * 1024 * 1024,
                 'display_price_cents' => 999,
+                'billing_period' => PlanAssignmentService::PERIOD_MONTHLY,
                 'sort_order' => 30,
             ],
         ];
 
         $freePlan = null;
+        $assignmentService = app(PlanAssignmentService::class);
 
         foreach ($plans as $data) {
             $plan = StoragePlan::query()->updateOrCreate(
@@ -51,6 +56,7 @@ class StoragePlanSeeder extends Seeder
                     'quota_bytes' => $data['quota_bytes'],
                     'display_price_cents' => $data['display_price_cents'],
                     'currency' => 'USD',
+                    'billing_period' => $data['billing_period'],
                     'is_active' => true,
                     'sort_order' => $data['sort_order'],
                 ]
@@ -61,23 +67,17 @@ class StoragePlanSeeder extends Seeder
             }
         }
 
-        // Default Free tier for every user without an active plan (5 GB).
+        // Default Free tier for every user without an active plan (5 GB, yearly renewal).
         if ($freePlan) {
-            User::query()->each(function (User $user) use ($freePlan) {
+            User::query()->each(function (User $user) use ($freePlan, $assignmentService) {
                 if (UserPlanAssignment::query()->where('user_id', $user->id)->where('is_active', true)->exists()) {
                     return;
                 }
 
-                UserPlanAssignment::create([
-                    'user_id' => $user->id,
-                    'storage_plan_uuid' => $freePlan->uuid,
-                    'source' => 'system_default',
-                    'starts_at' => now(),
-                    'is_active' => true,
-                ]);
+                $assignmentService->assign($user, $freePlan, null, 'system_default');
             });
         }
 
-        $this->command?->info('Seeded storage plans: Free (5 GB), Family (10 GB), Premium (50 GB)');
+        $this->command?->info('Seeded storage plans: Free (5 GB / yearly), Family (10 GB / monthly), Premium (50 GB / monthly)');
     }
 }

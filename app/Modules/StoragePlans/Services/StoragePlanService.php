@@ -45,6 +45,12 @@ class StoragePlanService
             ]);
         }
 
+        $period = $data['billing_period']
+            ?? ($data['slug'] === 'free' ? PlanAssignmentService::PERIOD_YEARLY : PlanAssignmentService::PERIOD_MONTHLY);
+        if ($data['slug'] === 'free') {
+            $period = PlanAssignmentService::PERIOD_YEARLY;
+        }
+
         $plan = StoragePlan::create([
             'uuid' => (string) Str::uuid(),
             'name' => $data['name'],
@@ -53,6 +59,7 @@ class StoragePlanService
             'quota_bytes' => $data['quota_bytes'],
             'display_price_cents' => $data['display_price_cents'] ?? 0,
             'currency' => $data['currency'] ?? 'USD',
+            'billing_period' => $period,
             'is_active' => $data['is_active'] ?? true,
             'sort_order' => $data['sort_order'] ?? 0,
         ]);
@@ -73,6 +80,11 @@ class StoragePlanService
             }
         }
 
+        // Free plan is always yearly by product rule.
+        if (($data['slug'] ?? $plan->slug) === 'free') {
+            $data['billing_period'] = PlanAssignmentService::PERIOD_YEARLY;
+        }
+
         $plan->update(collect($data)->only([
             'name',
             'description',
@@ -80,6 +92,7 @@ class StoragePlanService
             'quota_bytes',
             'display_price_cents',
             'currency',
+            'billing_period',
             'is_active',
             'sort_order',
         ])->all());
@@ -116,6 +129,11 @@ class StoragePlanService
     /** @return array<string, mixed> */
     public static function formatPlan(StoragePlan $plan): array
     {
+        $period = app(PlanAssignmentService::class)->normalizePeriod(
+            $plan->billing_period,
+            $plan->slug,
+        );
+
         return [
             'uuid' => $plan->uuid,
             'name' => $plan->name,
@@ -124,6 +142,8 @@ class StoragePlanService
             'quota_bytes' => $plan->quota_bytes,
             'display_price_cents' => $plan->display_price_cents,
             'currency' => $plan->currency,
+            'billing_period' => $period,
+            'billing_period_label' => $period === PlanAssignmentService::PERIOD_YEARLY ? 'Yearly' : 'Monthly',
             'is_active' => $plan->is_active,
             'sort_order' => $plan->sort_order,
         ];

@@ -68,13 +68,19 @@ Create a plan.
   "quota_bytes": 10737418240,
   "display_price_cents": 0,
   "currency": "USD",
+  "billing_period": "monthly",
   "sort_order": 10
 }
 ```
 
-Fields: **plan name**, **description**, **data limit** (`quota_bytes`), **price** (`display_price_cents` + `currency`).
+Fields: **plan name**, **description**, **data limit** (`quota_bytes`), **price** (`display_price_cents` + `currency`), **time limit** (`billing_period`: `monthly` | `yearly`).
 
-Seed Free (5 GB), Family (10 GB), Premium (50 GB) via `StoragePlanSeeder`.
+- **Free** plan: `billing_period=yearly` (forced)
+- Other plans: default `monthly`
+- Assignments always get `ends_at` = next **billing** date (start + period). `php artisan storage:renew-plans` (daily) advances that date when due.
+- **Quota does not reset on billing.** The assigned plan’s `quota_bytes` stays in force; `storage_used_bytes` / `storage_read_bytes` are never cleared by renewal. Only the plan **price** is charged on the interval (payments = later versions).
+
+Seed Free (5 GB / yearly billing), Family (10 GB / monthly billing), Premium (50 GB / monthly billing) via `StoragePlanSeeder`.
 
 ## PATCH /admin/storage/plans/{uuid}
 

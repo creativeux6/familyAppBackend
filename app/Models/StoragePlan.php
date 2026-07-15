@@ -21,6 +21,7 @@ class StoragePlan extends Model
         'quota_bytes',
         'display_price_cents',
         'currency',
+        'billing_period',
         'is_active',
         'sort_order',
     ];
@@ -33,5 +34,11 @@ class StoragePlan extends Model
             'is_active' => 'boolean',
             'sort_order' => 'integer',
         ];
+    }
+
+    public function isYearly(): bool
+    {
+        return strtolower((string) $this->billing_period) === 'yearly'
+            || $this->slug === 'free';
     }
 }

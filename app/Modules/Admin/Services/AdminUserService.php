@@ -213,6 +213,14 @@ class AdminUserService
             'plan_name' => $plan?->name,
             'plan_slug' => $plan?->slug,
             'quota_bytes' => $plan ? (int) $plan->quota_bytes : null,
+            'billing_period' => $plan
+                ? $this->planAssignmentService->normalizePeriod($plan->billing_period, $plan->slug)
+                : null,
+            'billing_period_label' => $plan
+                ? ($this->planAssignmentService->normalizePeriod($plan->billing_period, $plan->slug) === 'yearly'
+                    ? 'Yearly'
+                    : 'Monthly')
+                : null,
             'plan_starts_at' => $assignment?->starts_at?->toIso8601String(),
             'renewal_date' => $assignment?->ends_at?->toIso8601String(),
             'plan_source' => $assignment?->source,

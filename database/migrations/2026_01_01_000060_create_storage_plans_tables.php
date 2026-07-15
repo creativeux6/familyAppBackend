@@ -16,6 +16,7 @@ return new class extends Migration
             $table->unsignedBigInteger('quota_bytes');
             $table->unsignedInteger('display_price_cents')->default(0);
             $table->string('currency', 3)->default('USD');
+            $table->string('billing_period', 16)->default('monthly'); // monthly|yearly
             $table->boolean('is_active')->default(true);
             $table->unsignedInteger('sort_order')->default(0);
             $table->timestamps();

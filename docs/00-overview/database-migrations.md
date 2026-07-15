@@ -142,9 +142,9 @@ Columns: uuid, owner_user_id, uploaded_by_user_id, s3_bucket, s3_key, display_na
 
 ## storage_plans / user_plan_assignments
 
-Plans: uuid, name, description (nullable), slug, quota_bytes, display_price_cents, currency, is_active, sort_order.
+Plans: uuid, name, description (nullable), slug, quota_bytes, display_price_cents, currency, billing_period (`monthly`|`yearly`), is_active, sort_order.
 
-Assignments: user_id, storage_plan_uuid, source (`admin_manual` / `payment` / `system_default`), assigned_by_user_id, starts_at, ends_at, is_active.
+Assignments: user_id, storage_plan_uuid, source (`admin_manual` / `payment` / `system_default`), assigned_by_user_id, starts_at, ends_at (**required for renewal**; Free = +1 year, others = +1 month), is_active.
 
 ## v2 stub tables
 

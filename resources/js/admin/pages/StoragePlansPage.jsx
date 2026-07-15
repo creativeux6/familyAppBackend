@@ -12,6 +12,7 @@ const emptyForm = {
   quota_gb: '5',
   price: '0',
   currency: 'USD',
+  billing_period: 'monthly',
   is_active: true,
   sort_order: '10',
 };
@@ -26,6 +27,9 @@ function slugify(value) {
 }
 
 function planToForm(plan) {
+  const period =
+    plan.slug === 'free' ? 'yearly' : plan.billing_period === 'yearly' ? 'yearly' : 'monthly';
+
   return {
     name: plan.name || '',
     slug: plan.slug || '',
@@ -33,6 +37,7 @@ function planToForm(plan) {
     quota_gb: String((Number(plan.quota_bytes) || 0) / (1024 * 1024 * 1024)),
     price: String(((Number(plan.display_price_cents) || 0) / 100).toFixed(2)),
     currency: plan.currency || 'USD',
+    billing_period: period,
     is_active: Boolean(plan.is_active),
     sort_order: String(plan.sort_order ?? 0),
   };
@@ -41,13 +46,17 @@ function planToForm(plan) {
 function formToPayload(form) {
   const quotaGb = Number(form.quota_gb);
   const price = Number(form.price);
+  const slug = form.slug.trim();
+  const billingPeriod = slug === 'free' ? 'yearly' : form.billing_period || 'monthly';
+
   return {
     name: form.name.trim(),
-    slug: form.slug.trim(),
+    slug,
     description: form.description.trim() || null,
     quota_bytes: Math.round(quotaGb * 1024 * 1024 * 1024),
     display_price_cents: Math.round(price * 100),
     currency: (form.currency || 'USD').toUpperCase(),
+    billing_period: billingPeriod,
     is_active: Boolean(form.is_active),
     sort_order: Number(form.sort_order) || 0,
   };
@@ -180,7 +189,8 @@ export function StoragePlansPage() {
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Storage plans</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Manage plan name, description, data limit, and price. Free (5 GB) is seeded by default.
+            Plan quota is fixed. Billing period is when the plan price is charged (monthly or yearly)
+            — storage usage is never reset on billing.
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -211,6 +221,7 @@ export function StoragePlansPage() {
                 <th className="px-4 py-3">Plan name</th>
                 <th className="px-4 py-3">Data limit</th>
                 <th className="px-4 py-3">Price</th>
+                <th className="px-4 py-3">Billing</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Actions</th>
               </tr>
@@ -219,14 +230,14 @@ export function StoragePlansPage() {
               {loading ? (
                 Array.from({ length: 3 }).map((_, i) => (
                   <tr key={i} className="border-t border-slate-100">
-                    <td colSpan={5} className="px-4 py-3">
+                    <td colSpan={6} className="px-4 py-3">
                       <Shimmer className="h-4 w-full" />
                     </td>
                   </tr>
                 ))
               ) : plans.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-slate-500">
+                  <td colSpan={6} className="px-4 py-8 text-slate-500">
                     No plans yet. Create one with <strong>New plan</strong>, or run{' '}
                     <code className="rounded bg-slate-100 px-1">
                       php artisan db:seed --class=StoragePlanSeeder
@@ -241,6 +252,12 @@ export function StoragePlansPage() {
                     <td className="px-4 py-3 text-slate-700">{formatBytes(plan.quota_bytes)}</td>
                     <td className="px-4 py-3 text-slate-700">
                       {formatPriceCents(plan.display_price_cents, plan.currency)}
+                    </td>
+                    <td className="px-4 py-3 text-slate-700">
+                      {plan.billing_period_label ||
+                        (plan.billing_period === 'yearly' || plan.slug === 'free'
+                          ? 'Yearly'
+                          : 'Monthly')}
                     </td>
                     <td className="px-4 py-3">
                       <span
@@ -392,6 +409,29 @@ export function StoragePlansPage() {
                       className={inputClassName()}
                     />
                   </Field>
+                  <Field label="Billing period (price charge)">
+                    <select
+                      value={form.slug === 'free' ? 'yearly' : form.billing_period}
+                      disabled={form.slug === 'free'}
+                      onChange={(e) =>
+                        setForm((prev) => ({ ...prev, billing_period: e.target.value }))
+                      }
+                      className={inputClassName()}
+                    >
+                      <option value="monthly">Monthly</option>
+                      <option value="yearly">Yearly</option>
+                    </select>
+                    {form.slug === 'free' ? (
+                      <p className="mt-1 text-[11px] text-slate-400">
+                        Free plan is billed yearly. Assigned quota stays 5 GB — usage is not reset.
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-[11px] text-slate-400">
+                        Price is charged on this interval. Plan quota stays the same; storage usage is
+                        not reset on billing.
+                      </p>
+                    )}
+                  </Field>
                   <Field label="Currency">
                     <input
                       value={form.currency}
@@ -454,6 +494,19 @@ export function StoragePlansPage() {
                       modal.plan?.display_price_cents,
                       modal.plan?.currency,
                     )}
+                  />
+                  <DetailRow
+                    label="Billing period (price charge)"
+                    value={
+                      modal.plan?.billing_period_label ||
+                      (modal.plan?.billing_period === 'yearly' || modal.plan?.slug === 'free'
+                        ? 'Yearly'
+                        : 'Monthly')
+                    }
+                  />
+                  <DetailRow
+                    label="Quota note"
+                    value="Assigned data limit stays fixed for this plan. Billing renews price only — storage usage is not reset."
                   />
                   <DetailRow label="Currency" value={modal.plan?.currency} />
                   <DetailRow label="Sort order" value={String(modal.plan?.sort_order ?? '')} />
