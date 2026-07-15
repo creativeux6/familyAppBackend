@@ -31,6 +31,7 @@ Route::middleware(['auth:sanctum', 'role:super_admin|admin'])->prefix('admin')->
     Route::patch('/abuse-reports/{uuid}', [AdminAbuseReportController::class, 'update']);
 
     Route::get('/system-logs', [AdminSystemLogController::class, 'index']);
+    Route::get('/system-logs/status-codes', [AdminSystemLogController::class, 'statusCodes']);
     Route::get('/system-logs/{uuid}', [AdminSystemLogController::class, 'show']);
     Route::get('/websocket-health', [AdminSystemLogController::class, 'websocketHealth']);
 });

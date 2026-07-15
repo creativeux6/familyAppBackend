@@ -227,6 +227,19 @@ class SystemErrorLogService
         ];
     }
 
+    /** @return list<int> */
+    public function distinctStatusCodes(): array
+    {
+        return SystemErrorLog::query()
+            ->whereNotNull('status_code')
+            ->distinct()
+            ->orderBy('status_code')
+            ->pluck('status_code')
+            ->map(fn ($code) => (int) $code)
+            ->values()
+            ->all();
+    }
+
     /** @return array<string, mixed> */
     public function show(string $uuid): array
     {

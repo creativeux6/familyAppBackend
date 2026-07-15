@@ -6,7 +6,13 @@ All media is **E2E encrypted on the client** before upload. The server stores **
 
 ## Storage quota
 
-Uploads check the user's active storage plan quota (or `MEDIA_DEFAULT_QUOTA_BYTES` fallback). `users.storage_used_bytes` tracks usage.
+Quota is the user's **assigned storage plan** (Free **5 GB** seeded on register). Usage is **combined**:
+
+- `users.storage_used_bytes` — stored uploads (reclaimable on delete)
+- `users.storage_read_bytes` — cumulative reads/egress: full downloads, thumbnails, stream chunks (never reclaimed)
+- Plan check uses `used = stored + read` via `StorageQuotaService::usedBytes()`
+
+At/over quota the API rejects gallery uploads/downloads and the app shows “Storage limit reached. Please subscribe to a paid plan.” Chat stays playable but still records read bytes. See [permanent-product-rules.md](../00-overview/permanent-product-rules.md).
 
 ---
 

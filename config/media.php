@@ -2,8 +2,8 @@
 
 return [
     'disk' => env('MEDIA_DISK', env('FILESYSTEM_DISK', 'local')),
-    // 0 (or negative) = unlimited user storage (S3). Plans still apply when assigned.
-    'default_quota_bytes' => (int) env('MEDIA_DEFAULT_QUOTA_BYTES', 0),
+    // Free-tier quota comes from the seeded Free storage plan (5 GB), not env.
+    // See docs/00-overview/permanent-product-rules.md
     'presigned_upload_ttl_minutes' => (int) env('MEDIA_PRESIGNED_UPLOAD_TTL', 15),
     'presigned_download_ttl_minutes' => (int) env('MEDIA_PRESIGNED_DOWNLOAD_TTL', 60),
     'key_prefix' => env('MEDIA_KEY_PREFIX', 'famlyApp/media'),

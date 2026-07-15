@@ -24,6 +24,7 @@ use Spatie\Permission\Traits\HasRoles;
     'is_anonymous',
     'marital_status',
     'storage_used_bytes',
+    'storage_read_bytes',
 ])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
@@ -61,6 +62,7 @@ class User extends Authenticatable
             'password' => 'hashed',
             'is_anonymous' => 'boolean',
             'storage_used_bytes' => 'integer',
+            'storage_read_bytes' => 'integer',
         ];
     }
 }

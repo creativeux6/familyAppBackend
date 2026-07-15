@@ -3,6 +3,7 @@
 namespace App\Modules\Auth\Services;
 
 use App\Models\User;
+use App\Modules\StoragePlans\Services\PlanAssignmentService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -12,6 +13,10 @@ use Spatie\Permission\Models\Role;
 
 class PhoneAuthService
 {
+    public function __construct(
+        private readonly PlanAssignmentService $planAssignmentService,
+    ) {}
+
     public function register(string $phone, string $displayName, string $password, string $tokenName = 'mobile'): array
     {
         $phone = $this->normalizePhone($phone);
@@ -43,6 +48,8 @@ class PhoneAuthService
             ]);
             $user->assignRole($userRole);
 
+            $this->planAssignmentService->ensureDefaultFreePlan($user);
+
             $token = $user->createToken($tokenName)->plainTextToken;
 
             return $this->authResponse($user->fresh(), $token, 'registered');
@@ -71,6 +78,8 @@ class PhoneAuthService
             ]);
             $user->assignRole($userRole);
         }
+
+        $this->planAssignmentService->ensureDefaultFreePlan($user);
 
         return $this->authResponse($user->fresh(), $token, 'logged_in');
     }

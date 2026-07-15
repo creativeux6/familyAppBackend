@@ -236,13 +236,14 @@ function SidebarNav({ isAdmin, onNavigate }) {
             <IconLogs />
             System logs
           </NavLink>
-          <div className="pointer-events-none mt-4 space-y-1 opacity-45">
-            <div className="px-3 text-[11px] font-semibold uppercase tracking-wider text-indigo-200/60">
-              Coming in Phase 2
-            </div>
-            <SidebarItem icon={<IconUsers />} label="Users" disabled />
-            <SidebarItem icon={<IconStorage />} label="Storage plans" disabled />
-          </div>
+          <NavLink to="/web/users" className={navClass} onClick={onNavigate}>
+            <IconUsers />
+            Users
+          </NavLink>
+          <NavLink to="/web/plans" className={navClass} onClick={onNavigate}>
+            <IconStorage />
+            Storage plans
+          </NavLink>
         </>
       ) : (
         <div className="pointer-events-none mt-4 space-y-1 opacity-45">
@@ -443,9 +444,17 @@ export function AppShell({ user, isAdmin, onLogout, children }) {
                 Home
               </Link>
               {isAdmin ? (
-                <Link to="/web/logs" className="hover:text-indigo-600">
-                  Logs
-                </Link>
+                <>
+                  <Link to="/web/logs" className="hover:text-indigo-600">
+                    Logs
+                  </Link>
+                  <Link to="/web/users" className="hover:text-indigo-600">
+                    Users
+                  </Link>
+                  <Link to="/web/plans" className="hover:text-indigo-600">
+                    Plans
+                  </Link>
+                </>
               ) : null}
               <Link to="/web/profile" className="hover:text-indigo-600">
                 Profile

@@ -58,6 +58,36 @@ class PlanAssignmentService
         return $assignment->fresh();
     }
 
+    public function ensureDefaultFreePlan(User $user): void
+    {
+        if ($this->activeAssignment($user) !== null) {
+            return;
+        }
+
+        $freePlan = StoragePlan::query()
+            ->where('slug', 'free')
+            ->where('is_active', true)
+            ->first();
+
+        if (! $freePlan) {
+            $freePlan = StoragePlan::query()->create([
+                'uuid' => (string) Str::uuid(),
+                'name' => 'Free',
+                'description' => 'Default plan for every new account. 5 GB combined storage and read/egress quota.',
+                'slug' => 'free',
+                'quota_bytes' => 5 * 1024 * 1024 * 1024,
+                'display_price_cents' => 0,
+                'currency' => 'USD',
+                'is_active' => true,
+                'sort_order' => 10,
+            ]);
+        } elseif ((int) $freePlan->quota_bytes !== 5 * 1024 * 1024 * 1024) {
+            $freePlan->update(['quota_bytes' => 5 * 1024 * 1024 * 1024]);
+        }
+
+        $this->assign($user, $freePlan, null, 'system_default');
+    }
+
     public function activeAssignment(User $user): ?UserPlanAssignment
     {
         return UserPlanAssignment::query()

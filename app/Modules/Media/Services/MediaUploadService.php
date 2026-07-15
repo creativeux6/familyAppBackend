@@ -358,7 +358,10 @@ class MediaUploadService
             'limit' => $pageSize,
             'events' => $eventService->listForUser($user, $eventScope),
             'quota_bytes' => $this->quotaService->quotaBytes($user),
+            'stored_bytes' => $this->quotaService->storedBytes($user),
+            'read_bytes' => $this->quotaService->readBytes($user),
             'used_bytes' => $this->quotaService->usedBytes($user),
+            'over_quota' => $this->quotaService->isOverQuota($user),
         ];
     }
 
@@ -475,6 +478,7 @@ class MediaUploadService
     {
         $media = $this->accessService->requireMedia($uuid);
         $this->accessService->assertCanView($user, $media);
+        $this->assertNonChatLibraryAccess($user, $media);
 
         if ($media->status !== 'active') {
             throw ValidationException::withMessages([
@@ -489,6 +493,13 @@ class MediaUploadService
         }
 
         $disk = Storage::disk((string) config('media.disk'));
+
+        $thumbBytes = max(0, (int) $media->thumbnail_size_bytes);
+        $this->quotaService->chargeReadTransfer(
+            $user,
+            $thumbBytes,
+            $this->coOwnerService->isChatMedia($media),
+        );
 
         return response()->streamDownload(function () use ($disk, $media) {
             echo $disk->get($media->thumbnail_s3_key);
@@ -651,20 +662,8 @@ class MediaUploadService
     /** @return array<string, mixed> */
     private function buildDownloadTarget(MediaFile $media): array
     {
-        $diskName = (string) config('media.disk');
+        // Always serve via API so every S3 egress is metered in StorageQuotaService.
         $expiresAt = now()->addMinutes((int) config('media.presigned_download_ttl_minutes', 60));
-
-        if ($diskName === 's3' && filled(config('filesystems.disks.s3.bucket'))) {
-            /** @var \Illuminate\Filesystem\FilesystemAdapter $disk */
-            $disk = Storage::disk('s3');
-            $url = $disk->temporaryUrl($media->s3_key, $expiresAt);
-
-            return [
-                'method' => 'GET',
-                'url' => $url,
-                'expires_at' => $expiresAt->toIso8601String(),
-            ];
-        }
 
         return [
             'method' => 'GET',
@@ -714,6 +713,7 @@ class MediaUploadService
     {
         $media = $this->accessService->requireMedia($uuid);
         $this->accessService->assertCanView($user, $media);
+        $this->assertNonChatLibraryAccess($user, $media);
 
         if ($media->status !== 'active') {
             throw ValidationException::withMessages([
@@ -723,6 +723,13 @@ class MediaUploadService
 
         $this->coOwnerService->chargeAccessQuotaIfNeeded($user, $media);
 
+        $transferBytes = max(0, (int) $media->size_bytes);
+        $this->quotaService->chargeReadTransfer(
+            $user,
+            $transferBytes,
+            $this->coOwnerService->isChatMedia($media),
+        );
+
         $disk = Storage::disk((string) config('media.disk'));
 
         return response()->streamDownload(function () use ($disk, $media) {
@@ -730,5 +737,14 @@ class MediaUploadService
         }, $media->display_name ?? $media->uuid, [
             'Content-Type' => $media->mime_type,
         ]);
+    }
+
+    private function assertNonChatLibraryAccess(User $user, MediaFile $media): void
+    {
+        if ($this->coOwnerService->isChatMedia($media)) {
+            return;
+        }
+
+        $this->quotaService->assertCanAccessLibrary($user);
     }
 }

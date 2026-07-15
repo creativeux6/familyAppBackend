@@ -11,6 +11,10 @@ A mobile-first family networking platform. Members register with phone + passwor
 5. **Media** — S3 storage with per-file permissions and ownership transfer
 6. **Family tree** — dynamic kinship labels (grandson, cousin, in-laws) computed from graph
 
+## Permanent rules (must follow)
+
+**[permanent-product-rules.md](./permanent-product-rules.md)** — no data loss after reinstall; Free **5 GB** via seeder (not env); quota = uploads **+** reads; gallery locked at quota with subscribe message.
+
 ## v1 vs v2
 
 | | v1 | v2 |
@@ -36,7 +40,7 @@ A mobile-first family networking platform. Members register with phone + passwor
 | 09 | `09-realtime-websockets/` | Reverb channels |
 | 10 | `10-flutter-mobile/` | Mobile UX |
 | 11 | `11-deployment-and-ops/` | Docker, env, **[commands](./11-deployment-and-ops/commands.md)**, **[production deployment](./11-deployment-and-ops/production-deployment.md)** |
-| 12 | `12-encryption-and-keys/` | E2E security (not cryptocurrency) |
+| 12 | `12-encryption-and-keys/` | E2E security — **[key continuity (never lose media/chat)](./12-encryption-and-keys/key-continuity.md)**, [API](./12-encryption-and-keys/api-contract.md) |
 | 13 | `13-neo4j-graph-sync/` | v2 graph projection |
 | 14 | `14-v2-adapters/` | v2 migration adapters |
 

@@ -48,6 +48,7 @@ class StoragePlanService
         $plan = StoragePlan::create([
             'uuid' => (string) Str::uuid(),
             'name' => $data['name'],
+            'description' => $data['description'] ?? null,
             'slug' => $data['slug'],
             'quota_bytes' => $data['quota_bytes'],
             'display_price_cents' => $data['display_price_cents'] ?? 0,
@@ -73,7 +74,14 @@ class StoragePlanService
         }
 
         $plan->update(collect($data)->only([
-            'name', 'slug', 'quota_bytes', 'display_price_cents', 'currency', 'is_active', 'sort_order',
+            'name',
+            'description',
+            'slug',
+            'quota_bytes',
+            'display_price_cents',
+            'currency',
+            'is_active',
+            'sort_order',
         ])->all());
 
         return self::formatPlan($plan->fresh());
@@ -111,6 +119,7 @@ class StoragePlanService
         return [
             'uuid' => $plan->uuid,
             'name' => $plan->name,
+            'description' => $plan->description,
             'slug' => $plan->slug,
             'quota_bytes' => $plan->quota_bytes,
             'display_price_cents' => $plan->display_price_cents,

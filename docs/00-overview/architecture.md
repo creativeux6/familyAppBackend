@@ -59,6 +59,8 @@ All routes: `/api/v1/*`. Breaking changes require `/api/v2/`.
 - E2E encryption for message body and media blobs
 - Server stores: ciphertext, metadata, public encryption keys, wrapped key envelopes
 - Admin sees metadata only — never plaintext content
+- **Key continuity (required):** identity private keys are backed up encrypted with the account password so gallery and chat stay unlockable after reinstall — see [12-encryption-and-keys/key-continuity.md](../12-encryption-and-keys/key-continuity.md)
+- **Free storage (required):** seeded Free plan = **5 GB**, assigned on register; quotas from plans only (not env). Usage = **stored uploads + reads/egress**. Over quota → gallery locked + subscribe message. [permanent-product-rules.md](./permanent-product-rules.md)
 
 ## Key services
 

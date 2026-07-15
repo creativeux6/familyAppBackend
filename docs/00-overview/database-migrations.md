@@ -44,7 +44,8 @@ Review gate document. Laravel migration files in `backend/database/migrations/` 
 | email_verified_at | timestamp nullable | |
 | password | varchar | Hashed password (required) |
 | is_anonymous | boolean default false | |
-| storage_used_bytes | bigint default 0 | |
+| storage_used_bytes | bigint default 0 | Stored (uploaded) bytes |
+| storage_read_bytes | bigint default 0 | Cumulative read/egress bytes (`2026_07_15_000001_…`) |
 | remember_token | varchar nullable | |
 | timestamps | | |
 | soft_deletes | | |
@@ -141,9 +142,9 @@ Columns: uuid, owner_user_id, uploaded_by_user_id, s3_bucket, s3_key, display_na
 
 ## storage_plans / user_plan_assignments
 
-Plans: uuid, name, slug, quota_bytes, display_price_cents, currency, is_active, sort_order.
+Plans: uuid, name, description (nullable), slug, quota_bytes, display_price_cents, currency, is_active, sort_order.
 
-Assignments: user_id, storage_plan_uuid, source (admin_manual/payment), assigned_by_user_id, starts_at, ends_at, is_active.
+Assignments: user_id, storage_plan_uuid, source (`admin_manual` / `payment` / `system_default`), assigned_by_user_id, starts_at, ends_at, is_active.
 
 ## v2 stub tables
 

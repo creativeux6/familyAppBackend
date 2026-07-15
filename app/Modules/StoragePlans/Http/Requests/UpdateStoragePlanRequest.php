@@ -15,6 +15,7 @@ class UpdateStoragePlanRequest extends FormRequest
     {
         return [
             'name' => ['sometimes', 'string', 'max:255'],
+            'description' => ['sometimes', 'nullable', 'string', 'max:2000'],
             'slug' => ['sometimes', 'string', 'max:255', 'alpha_dash'],
             'quota_bytes' => ['sometimes', 'integer', 'min:1'],
             'display_price_cents' => ['sometimes', 'integer', 'min:0'],

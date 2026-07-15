@@ -4,6 +4,7 @@ namespace App\Modules\Media\Services;
 
 use App\Models\MediaFile;
 use App\Models\User;
+use App\Modules\StoragePlans\Services\StorageQuotaService;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -13,6 +14,7 @@ class MediaStreamService
     public function __construct(
         private readonly MediaAccessService $accessService,
         private readonly MediaCoOwnerService $coOwnerService,
+        private readonly StorageQuotaService $quotaService,
     ) {}
 
     public function streamPrefix(MediaFile $media): string
@@ -35,6 +37,7 @@ class MediaStreamService
     {
         $media = $this->accessService->requireMedia($uuid);
         $this->accessService->assertCanView($user, $media);
+        $this->assertNonChatLibraryAccess($user, $media);
 
         if ($media->status !== 'active') {
             throw ValidationException::withMessages([
@@ -67,6 +70,7 @@ class MediaStreamService
     {
         $media = $this->accessService->requireMedia($uuid);
         $this->accessService->assertCanView($user, $media);
+        $this->assertNonChatLibraryAccess($user, $media);
 
         if ($media->status !== 'active') {
             throw ValidationException::withMessages([
@@ -91,6 +95,11 @@ class MediaStreamService
 
         $size = (int) $disk->size($key);
         $this->coOwnerService->chargeStreamBytesIfNeeded($user, $media, $size);
+        $this->quotaService->chargeReadTransfer(
+            $user,
+            $size,
+            $this->coOwnerService->isChatMedia($media),
+        );
 
         return response()->streamDownload(function () use ($disk, $key) {
             echo $disk->get($key);
@@ -211,5 +220,14 @@ class MediaStreamService
         } catch (\Throwable) {
             // ignore
         }
+    }
+
+    private function assertNonChatLibraryAccess(User $user, MediaFile $media): void
+    {
+        if ($this->coOwnerService->isChatMedia($media)) {
+            return;
+        }
+
+        $this->quotaService->assertCanAccessLibrary($user);
     }
 }

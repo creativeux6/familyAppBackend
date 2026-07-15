@@ -14,7 +14,15 @@ class StoragePlan extends Model
     protected $keyType = 'string';
 
     protected $fillable = [
-        'uuid', 'name', 'slug', 'quota_bytes', 'display_price_cents', 'currency', 'is_active', 'sort_order',
+        'uuid',
+        'name',
+        'description',
+        'slug',
+        'quota_bytes',
+        'display_price_cents',
+        'currency',
+        'is_active',
+        'sort_order',
     ];
 
     protected function casts(): array

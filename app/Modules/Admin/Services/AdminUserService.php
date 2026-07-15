@@ -189,6 +189,8 @@ class AdminUserService
             'display_name' => $user->display_name,
             'is_anonymous' => $user->is_anonymous,
             'storage_used_bytes' => $user->storage_used_bytes,
+            'storage_read_bytes' => $user->storage_read_bytes,
+            'storage_total_used_bytes' => (int) $user->storage_used_bytes + (int) $user->storage_read_bytes,
             'roles' => $user->roles->pluck('name')->values()->all(),
             'deleted_at' => $user->deleted_at?->toIso8601String(),
             'created_at' => $user->created_at?->toIso8601String(),

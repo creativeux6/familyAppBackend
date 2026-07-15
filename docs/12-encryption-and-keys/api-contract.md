@@ -4,6 +4,10 @@ Base path: `/api/v1/encryption`
 
 **Note:** This is end-to-end **encryption** (message/media security), not cryptocurrency.
 
+**Key continuity (mandatory):** private-key backups keep gallery and chat unlockable after reinstall. See [key-continuity.md](./key-continuity.md). The mobile app wraps the identity private key with the **account password** on every login/register (`ensureDurableIdentityKeys`).
+
+**Also see:** [permanent product rules](../00-overview/permanent-product-rules.md) (Free 5 GB plan, no env quota, no data loss).
+
 All routes require `Authorization: Bearer {token}`.
 
 ## POST /identity-key

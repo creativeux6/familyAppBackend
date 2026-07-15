@@ -11,6 +11,7 @@ return new class extends Migration
         Schema::create('storage_plans', function (Blueprint $table) {
             $table->uuid('uuid')->primary();
             $table->string('name');
+            $table->text('description')->nullable();
             $table->string('slug')->unique();
             $table->unsignedBigInteger('quota_bytes');
             $table->unsignedInteger('display_price_cents')->default(0);
@@ -24,7 +25,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
             $table->foreignUuid('storage_plan_uuid')->constrained('storage_plans', 'uuid');
-            $table->enum('source', ['admin_manual', 'payment'])->default('admin_manual');
+            $table->enum('source', ['admin_manual', 'payment', 'system_default'])->default('admin_manual');
             $table->foreignId('assigned_by_user_id')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamp('starts_at');
             $table->timestamp('ends_at')->nullable();

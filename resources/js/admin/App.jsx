@@ -11,6 +11,8 @@ import { AdminDashboardPage } from './pages/AdminDashboardPage';
 import { UserHomePage } from './pages/UserHomePage';
 import { LogsPage } from './pages/LogsPage';
 import { ProfilePage } from './pages/ProfilePage';
+import { UsersPage } from './pages/UsersPage';
+import { StoragePlansPage } from './pages/StoragePlansPage';
 
 function GuestOnly({ children }) {
   const { user, booting } = useAuth();
@@ -60,9 +62,11 @@ function RequireAuth() {
     ? 'logs'
     : location.pathname.includes('/profile')
       ? 'profile'
-      : shellIsAdmin
+      : location.pathname.includes('/users') || location.pathname.includes('/plans')
         ? 'dashboard'
-        : 'home';
+        : shellIsAdmin
+          ? 'dashboard'
+          : 'home';
 
   return (
     <AppShell
@@ -121,6 +125,8 @@ function AppRoutes() {
       <Route path="/web" element={<RequireAuth />}>
         <Route index element={<HomeRoute />} />
         <Route path="logs" element={<LogsPage />} />
+        <Route path="users" element={<UsersPage />} />
+        <Route path="plans" element={<StoragePlansPage />} />
         <Route path="profile" element={<ProfilePage />} />
       </Route>
       <Route path="*" element={<Navigate to="/web" replace />} />

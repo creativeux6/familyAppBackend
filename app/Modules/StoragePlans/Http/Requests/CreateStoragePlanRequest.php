@@ -15,6 +15,7 @@ class CreateStoragePlanRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255'],
+            'description' => ['sometimes', 'nullable', 'string', 'max:2000'],
             'slug' => ['required', 'string', 'max:255', 'alpha_dash'],
             'quota_bytes' => ['required', 'integer', 'min:1'],
             'display_price_cents' => ['sometimes', 'integer', 'min:0'],

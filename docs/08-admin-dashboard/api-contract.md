@@ -53,7 +53,11 @@ Admin log list/detail endpoints themselves are excluded to avoid recursion.
 
 ### GET /admin/system-logs
 
-**Query:** `q` (search message/exception/path/status), `path`, `status_code`, `user_uuid`, `from`, `to`, `page`, `per_page` (default **20**, max 50)
+**Query:** `q` (search message/exception/path/status), `path`, `status_code`, `user_uuid`, `from`, `to`, `page`, `per_page` (default **20**, max **20**)
+
+**Status codes list:** `GET /admin/system-logs/status-codes` → `{ "status_codes": [200, 401, 422, ...] }` for dropdown filters.
+
+Web UI (`/web/logs`): status-code **dropdown** (All + common + seen codes), colored HTTP badges (e.g. **200 Success**), and always-visible pagination (First / Prev / Next / Last) at **20 per page**.
 
 **Response 200:** paginated `{ data: [...], meta: {...} }`  
 Each row: `uuid`, `occurred_at`, `method`, `path`, `status_code`, `exception_class`, `message`, `user` `{ uuid, display_name, phone } | null`.
@@ -122,11 +126,12 @@ Storage plan admin: `/admin/storage/*` (see [07-storage-plans](../07-storage-pla
 
 ---
 
-## Phase 2 (planned — not built)
+## Phase 2 (admin console — built)
 
-**Users in panel:** gallery, events, calendar, connections, groups — same mobile `/api/v1` APIs.
+**Admins / super_admin (UI at `/web`):**
 
-**Admins / super_admin:**
+- **Users** (`/web/users`) — list/search, ban/restore, assign storage plan — API `/admin/users/*`, `/admin/storage/users/.../assign`
+- **Storage plans** (`/web/plans`) — CRUD for plan name, description, data limit (GB), price — API `/admin/storage/plans`
+- **System logs** — status dropdown + colored badges + 20/page pagination
 
-- User management UI (list, suspend/restore) — API already exists
-- Storage space & plans management UI — `/admin/storage/*` already exists
+**Still later (user web console):** gallery, events, calendar, connections, groups — same mobile `/api/v1` APIs.

@@ -47,7 +47,6 @@
 | `AWS_ENDPOINT` | http://minio:9000 | MinIO endpoint (local) |
 | `AWS_USE_PATH_STYLE_ENDPOINT` | true | Required for MinIO |
 | `MEDIA_DISK` | s3 / local | Media storage disk |
-| `MEDIA_DEFAULT_QUOTA_BYTES` | 5368709120 | Default quota (5 GB) if no plan assigned |
 | `MEDIA_KEY_PREFIX` | media | S3 key prefix |
 
 ## Reverb (WebSockets)

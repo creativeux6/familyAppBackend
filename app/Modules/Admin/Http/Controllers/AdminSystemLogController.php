@@ -27,8 +27,15 @@ class AdminSystemLogController extends Controller
             $request->query('to'),
             $request->query('q') ?? $request->query('search'),
             max(1, (int) $request->query('page', 1)),
-            min(50, max(1, (int) $request->query('per_page', 20))),
+            min(20, max(1, (int) $request->query('per_page', 20))),
         ));
+    }
+
+    public function statusCodes(): JsonResponse
+    {
+        return response()->json([
+            'status_codes' => $this->logService->distinctStatusCodes(),
+        ]);
     }
 
     public function show(string $uuid): JsonResponse

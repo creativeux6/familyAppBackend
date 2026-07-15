@@ -1,7 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../auth';
+import {
+  HttpStatusBadge,
+  mergeStatusCodes,
+  PaginationBar,
+} from '../components';
 import { LogsShimmer, Shimmer } from '../shimmer';
 
 function statusBadge(status) {
@@ -13,14 +18,6 @@ function statusBadge(status) {
   return map[status] || 'bg-slate-50 text-slate-600 border-slate-200';
 }
 
-function httpStatusClass(code) {
-  if (!code) return 'bg-slate-50 text-slate-600 border-slate-200';
-  if (code >= 500) return 'bg-red-50 text-red-700 border-red-200';
-  if (code >= 400) return 'bg-amber-50 text-amber-800 border-amber-200';
-  if (code >= 200 && code < 300) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-  return 'bg-slate-50 text-slate-600 border-slate-200';
-}
-
 const emptyFilters = {
   q: '',
   status_code: '',
@@ -28,11 +25,14 @@ const emptyFilters = {
   to: '',
 };
 
+const PER_PAGE = 20;
+
 export function LogsPage() {
   const { isAdmin } = useAuth();
   const [logs, setLogs] = useState([]);
   const [meta, setMeta] = useState(null);
   const [health, setHealth] = useState(null);
+  const [statusCodes, setStatusCodes] = useState([]);
   const [selected, setSelected] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState('');
@@ -40,7 +40,30 @@ export function LogsPage() {
   const [draft, setDraft] = useState(emptyFilters);
   const [filters, setFilters] = useState(emptyFilters);
   const [page, setPage] = useState(1);
-  const perPage = 20;
+
+  const statusOptions = useMemo(() => mergeStatusCodes(statusCodes), [statusCodes]);
+
+  useEffect(() => {
+    if (!isAdmin) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const codesData = await api('/admin/system-logs/status-codes');
+        if (!cancelled) {
+          setStatusCodes(codesData.status_codes || []);
+        }
+      } catch {
+        // Dropdown still has COMMON_HTTP_STATUS_CODES via mergeStatusCodes.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdmin]);
 
   useEffect(() => {
     if (!isAdmin) {
@@ -53,11 +76,11 @@ export function LogsPage() {
       setError('');
       try {
         const query = new URLSearchParams({
-          per_page: String(perPage),
+          per_page: String(PER_PAGE),
           page: String(page),
         });
         if (filters.q.trim()) query.set('q', filters.q.trim());
-        if (filters.status_code.trim()) query.set('status_code', filters.status_code.trim());
+        if (filters.status_code) query.set('status_code', String(filters.status_code));
         if (filters.from) query.set('from', filters.from);
         if (filters.to) query.set('to', filters.to);
 
@@ -66,8 +89,21 @@ export function LogsPage() {
           api('/admin/websocket-health'),
         ]);
         if (cancelled) return;
-        setLogs(logsData.data || []);
-        setMeta(logsData.meta || null);
+
+        const rows = Array.isArray(logsData?.data)
+          ? logsData.data
+          : Array.isArray(logsData)
+            ? logsData
+            : [];
+        setLogs(rows.slice(0, PER_PAGE));
+        setMeta(
+          logsData?.meta || {
+            current_page: page,
+            per_page: PER_PAGE,
+            total: rows.length,
+            last_page: 1,
+          },
+        );
         setHealth(healthData);
       } catch (err) {
         if (!cancelled) setError(err.message || 'Could not load logs');
@@ -234,23 +270,34 @@ export function LogsPage() {
         <div className="mb-3 text-sm font-semibold text-slate-800">Search API logs</div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <label className="block text-xs text-slate-500 sm:col-span-2 lg:col-span-2">
-            Search (message, exception, path, status code)
+            Search (message, exception, path)
             <input
               value={draft.q}
               onChange={(e) => setDraft((prev) => ({ ...prev, q: e.target.value }))}
-              placeholder="e.g. 413, ValidationException, upload…"
+              placeholder="e.g. ValidationException, upload…"
               className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
             />
           </label>
           <label className="block text-xs text-slate-500">
             Status code
-            <input
+            <select
               value={draft.status_code}
               onChange={(e) => setDraft((prev) => ({ ...prev, status_code: e.target.value }))}
-              placeholder="422"
-              inputMode="numeric"
               className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-            />
+            >
+              <option value="">All status codes</option>
+              {statusOptions.map((code) => (
+                <option key={code} value={String(code)}>
+                  {code} — {code >= 200 && code < 300
+                    ? 'Success'
+                    : code >= 300 && code < 400
+                      ? 'Redirect'
+                      : code >= 400 && code < 500
+                        ? 'Client error'
+                        : 'Server error'}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="block text-xs text-slate-500">
             From
@@ -333,11 +380,7 @@ export function LogsPage() {
                       {log.method} {log.path}
                     </td>
                     <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold ${httpStatusClass(log.status_code)}`}
-                      >
-                        {log.status_code || '—'}
-                      </span>
+                      <HttpStatusBadge code={log.status_code} />
                     </td>
                     <td className="px-4 py-3 font-mono text-xs text-slate-600">
                       {log.exception_class || '—'}
@@ -349,52 +392,13 @@ export function LogsPage() {
             </tbody>
           </table>
         </div>
-        {meta ? (
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3 text-xs text-slate-500">
-            <span>
-              Showing {(meta.current_page - 1) * meta.per_page + (logs.length ? 1 : 0)}–
-              {(meta.current_page - 1) * meta.per_page + logs.length} of {meta.total} · {meta.per_page}{' '}
-              per page
-            </span>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                disabled={page <= 1 || loading}
-                onClick={() => setPage(1)}
-                className="rounded-lg border border-slate-200 px-2 py-1 disabled:opacity-40"
-              >
-                First
-              </button>
-              <button
-                type="button"
-                disabled={page <= 1 || loading}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="rounded-lg border border-slate-200 px-2 py-1 disabled:opacity-40"
-              >
-                Prev
-              </button>
-              <span className="px-1 font-medium text-slate-700">
-                Page {meta.current_page} / {meta.last_page || 1}
-              </span>
-              <button
-                type="button"
-                disabled={page >= (meta.last_page || 1) || loading}
-                onClick={() => setPage((p) => p + 1)}
-                className="rounded-lg border border-slate-200 px-2 py-1 disabled:opacity-40"
-              >
-                Next
-              </button>
-              <button
-                type="button"
-                disabled={page >= (meta.last_page || 1) || loading}
-                onClick={() => setPage(meta.last_page || 1)}
-                className="rounded-lg border border-slate-200 px-2 py-1 disabled:opacity-40"
-              >
-                Last
-              </button>
-            </div>
-          </div>
-        ) : null}
+        <PaginationBar
+          meta={meta}
+          page={page}
+          loading={loading}
+          itemCount={logs.length}
+          onPageChange={setPage}
+        />
       </div>
 
       {detailLoading ? (
@@ -439,11 +443,7 @@ export function LogsPage() {
               </button>
             </div>
             <div className="mb-4">
-              <span
-                className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold ${httpStatusClass(selected.status_code)}`}
-              >
-                HTTP {selected.status_code || '—'}
-              </span>
+              <HttpStatusBadge code={selected.status_code} />
             </div>
             <div className="grid gap-3 text-sm sm:grid-cols-2">
               <div>
