@@ -2,6 +2,7 @@
 
 namespace App\Modules\Admin\Services;
 
+use App\Models\Connection;
 use App\Models\User;
 use App\Modules\StoragePlans\Services\PlanAssignmentService;
 use App\Modules\StoragePlans\Services\StorageQuotaService;
@@ -42,7 +43,8 @@ class AdminUserService
             $query->where(function ($q) use ($search) {
                 $q->where('phone', 'like', "%{$search}%")
                     ->orWhere('display_name', 'like', "%{$search}%")
-                    ->orWhere('email', 'like', "%{$search}%");
+                    ->orWhere('email', 'like', "%{$search}%")
+                    ->orWhere('uuid', 'like', "%{$search}%");
             });
         }
 
@@ -62,7 +64,7 @@ class AdminUserService
     public function show(string $uuid): array
     {
         $user = User::query()->withTrashed()
-            ->with(['roles', 'familyMember.family', 'phones'])
+            ->with(['roles', 'familyMember.family'])
             ->where('uuid', $uuid)
             ->first();
 
@@ -75,14 +77,10 @@ class AdminUserService
         $assignment = $this->planAssignmentService->activeAssignment($user);
 
         return [
-            'user' => $this->formatDetailUser($user),
+            'user' => $this->formatListUser($user),
             'storage' => $this->quotaService->summary($user),
             'roles' => $user->roles->pluck('name')->values()->all(),
-            'family_member' => $user->familyMember ? [
-                'uuid' => $user->familyMember->uuid,
-                'family_uuid' => $user->familyMember->family_uuid,
-                'family_name' => $user->familyMember->family?->name,
-            ] : null,
+            'management' => $this->formatManagementSummary($user),
             'plan_assignment' => $assignment
                 ? $this->planAssignmentService->formatAssignment($assignment)
                 : null,
@@ -204,9 +202,7 @@ class AdminUserService
 
         return [
             'uuid' => $user->uuid,
-            'phone' => $user->phone,
             'display_name' => $user->display_name,
-            'is_anonymous' => $user->is_anonymous,
             'storage_used_bytes' => $user->storage_used_bytes,
             'storage_read_bytes' => $user->storage_read_bytes,
             'storage_total_used_bytes' => (int) $user->storage_used_bytes + (int) $user->storage_read_bytes,
@@ -230,11 +226,31 @@ class AdminUserService
         ];
     }
 
-    /** @return array<string, mixed> */
-    private function formatDetailUser(User $user): array
+    /**
+     * Operational account summary for admins — no phone, email, or media content.
+     *
+     * @return array<string, mixed>
+     */
+    private function formatManagementSummary(User $user): array
     {
-        return array_merge($this->formatListUser($user), [
-            'email' => $user->email,
-        ]);
+        $family = $user->familyMember?->family;
+        $inFamily = $family !== null;
+
+        $connectedMembersCount = Connection::query()
+            ->where(function ($q) use ($user) {
+                $q->where('requester_user_id', $user->id)
+                    ->orWhere('recipient_user_id', $user->id);
+            })
+            ->where('status', 'connected')
+            ->count();
+
+        return [
+            'account_mode' => $inFamily ? 'family' : 'private',
+            'account_mode_label' => $inFamily ? 'Family' : 'Private',
+            'family_uuid' => $family?->uuid,
+            'family_member_count' => $inFamily ? (int) ($family->member_count ?? 0) : 0,
+            'connected_members_count' => $connectedMembersCount,
+            'is_anonymous' => (bool) $user->is_anonymous,
+        ];
     }
 }

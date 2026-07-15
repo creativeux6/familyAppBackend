@@ -7,6 +7,24 @@ import { Shimmer } from '../shimmer';
 
 const PER_PAGE = 20;
 
+function formatDate(value) {
+  if (!value) return '—';
+  try {
+    return new Date(value).toLocaleDateString();
+  } catch {
+    return '—';
+  }
+}
+
+function formatDateTime(value) {
+  if (!value) return '—';
+  try {
+    return new Date(value).toLocaleString();
+  } catch {
+    return '—';
+  }
+}
+
 export function UsersPage() {
   const { isAdmin } = useAuth();
   const [users, setUsers] = useState([]);
@@ -144,13 +162,25 @@ export function UsersPage() {
     }
   }
 
+  const management = selected?.management;
+  const storage = selected?.storage;
+  const plan =
+    storage?.plan || selected?.plan_assignment?.plan || null;
+  const cycleStart =
+    selected?.plan_assignment?.starts_at || selected?.user?.plan_starts_at;
+  const cycleEnd =
+    selected?.plan_assignment?.ends_at ||
+    selected?.plan_assignment?.renewal_date ||
+    selected?.user?.renewal_date;
+
   return (
     <div>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Users</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Search, suspend/restore accounts, and assign storage plans.
+            Operational account view — storage, plans, and membership. No personal contact or media
+            content is shown.
           </p>
         </div>
         <Link to="/web" className="text-sm text-indigo-600 hover:underline">
@@ -173,12 +203,12 @@ export function UsersPage() {
         }}
       >
         <label className="block min-w-[14rem] flex-1 text-xs text-slate-500">
-          Search phone, name, or email
+          Search account name or ID
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-            placeholder="+92… or display name"
+            placeholder="Display name or UUID…"
           />
         </label>
         <label className="flex items-center gap-2 pb-2 text-sm text-slate-700">
@@ -205,8 +235,7 @@ export function UsersPage() {
           <table className="min-w-full text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
               <tr>
-                <th className="px-4 py-3">User</th>
-                <th className="px-4 py-3">Phone</th>
+                <th className="px-4 py-3">Account</th>
                 <th className="px-4 py-3">Plan</th>
                 <th className="px-4 py-3">Quota</th>
                 <th className="px-4 py-3">Usage</th>
@@ -219,14 +248,14 @@ export function UsersPage() {
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i} className="border-t border-slate-100">
-                    <td colSpan={8} className="px-4 py-3">
+                    <td colSpan={7} className="px-4 py-3">
                       <Shimmer className="h-4 w-full" />
                     </td>
                   </tr>
                 ))
               ) : users.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-slate-500">
+                  <td colSpan={7} className="px-4 py-8 text-slate-500">
                     No users found.
                   </td>
                 </tr>
@@ -235,10 +264,12 @@ export function UsersPage() {
                   const banned = Boolean(user.deleted_at);
                   return (
                     <tr key={user.uuid} className="border-t border-slate-100">
-                      <td className="px-4 py-3 font-medium text-slate-800">
-                        {user.display_name}
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-slate-800">{user.display_name || '—'}</div>
+                        <div className="mt-0.5 font-mono text-[11px] text-slate-400">
+                          {user.uuid?.slice(0, 8)}…
+                        </div>
                       </td>
-                      <td className="px-4 py-3 font-mono text-xs text-slate-600">{user.phone}</td>
                       <td className="px-4 py-3 text-slate-700">
                         <div className="font-medium">{user.plan_name || '—'}</div>
                         {user.billing_period_label ? (
@@ -259,9 +290,7 @@ export function UsersPage() {
                         ) : null}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-slate-600">
-                        {user.renewal_date
-                          ? new Date(user.renewal_date).toLocaleDateString()
-                          : '—'}
+                        {formatDate(user.renewal_date)}
                       </td>
                       <td className="px-4 py-3">
                         <span
@@ -282,7 +311,7 @@ export function UsersPage() {
                             onClick={() => openUser(user.uuid)}
                             className="rounded-lg border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-40"
                           >
-                            Manage
+                            View
                           </button>
                           {banned ? (
                             <button
@@ -328,17 +357,18 @@ export function UsersPage() {
           role="presentation"
         >
           <div
-            className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-xl"
+            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-xl"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
           >
             <div className="mb-4 flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-lg font-semibold text-slate-900">
-                  {selected.user?.display_name}
-                </h2>
-                <p className="mt-1 font-mono text-xs text-slate-500">{selected.user?.phone}</p>
+                <h2 className="text-lg font-semibold text-slate-900">Account overview</h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  {selected.user?.display_name || 'Account'}
+                </p>
+                <p className="mt-0.5 font-mono text-[11px] text-slate-400">{selected.user?.uuid}</p>
               </div>
               <button
                 type="button"
@@ -349,59 +379,82 @@ export function UsersPage() {
               </button>
             </div>
 
-            <div className="space-y-2 text-sm text-slate-700">
-              <div>
-                Roles: {(selected.roles || []).join(', ') || 'user'}
+            <dl className="space-y-3 text-sm">
+              <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
+                <dt className="text-slate-500">Account type</dt>
+                <dd className="font-medium text-slate-800">
+                  {management?.account_mode_label || '—'}
+                </dd>
               </div>
-              <div>
-                Plan:{' '}
-                {selected.storage?.plan?.name ||
-                  selected.plan_assignment?.plan?.name ||
-                  '—'}
-                {(selected.storage?.quota_bytes != null ||
-                  selected.plan_assignment?.plan?.quota_bytes != null) && (
-                  <>
-                    {' '}
-                    · Quota{' '}
-                    {formatBytes(
-                      selected.storage?.quota_bytes ??
-                        selected.plan_assignment?.plan?.quota_bytes,
-                    )}
-                  </>
-                )}
+              <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
+                <dt className="text-slate-500">Family members</dt>
+                <dd className="font-medium text-slate-800">
+                  {management?.account_mode === 'family'
+                    ? management?.family_member_count ?? 0
+                    : '—'}
+                </dd>
               </div>
-              <div>
-                Next bill date:{' '}
-                {selected.plan_assignment?.ends_at || selected.plan_assignment?.renewal_date
-                  ? new Date(
-                      selected.plan_assignment.ends_at ||
-                        selected.plan_assignment.renewal_date,
-                    ).toLocaleString()
-                  : '—'}
-                {(selected.storage?.plan?.billing_period_label ||
-                  selected.plan_assignment?.plan?.billing_period_label) && (
-                  <span className="text-slate-500">
-                    {' '}
-                    (
-                    {selected.storage?.plan?.billing_period_label ||
-                      selected.plan_assignment?.plan?.billing_period_label}{' '}
-                    price cycle)
-                  </span>
-                )}
+              <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
+                <dt className="text-slate-500">Connected members</dt>
+                <dd className="font-medium text-slate-800">
+                  {management?.connected_members_count ?? 0}
+                </dd>
               </div>
-              <div className="text-xs text-slate-500">
-                Quota stays as assigned by the plan. Billing does not reset stored or read usage.
+              <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
+                <dt className="text-slate-500">Roles</dt>
+                <dd className="font-medium text-slate-800">
+                  {(selected.roles || []).join(', ') || 'user'}
+                </dd>
               </div>
-              <div>
-                Storage:{' '}
-                {formatBytes(selected.storage?.used_bytes)} of{' '}
-                {formatBytes(selected.storage?.quota_bytes)}
+              <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
+                <dt className="text-slate-500">Plan</dt>
+                <dd className="text-right font-medium text-slate-800">
+                  {plan?.name || '—'}
+                  {plan?.billing_period_label ? (
+                    <div className="text-xs font-normal text-slate-500">
+                      {plan.billing_period_label} billing
+                    </div>
+                  ) : null}
+                </dd>
               </div>
-              <div className="text-xs text-slate-500">
-                Stored {formatBytes(selected.storage?.stored_bytes)} · Read{' '}
-                {formatBytes(selected.storage?.read_bytes)}
+              <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
+                <dt className="text-slate-500">Quota</dt>
+                <dd className="font-medium text-slate-800">
+                  {formatBytes(storage?.quota_bytes ?? plan?.quota_bytes)}
+                </dd>
               </div>
-            </div>
+              <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
+                <dt className="text-slate-500">Plan cycle start</dt>
+                <dd className="font-medium text-slate-800">{formatDateTime(cycleStart)}</dd>
+              </div>
+              <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
+                <dt className="text-slate-500">Next bill / cycle end</dt>
+                <dd className="font-medium text-slate-800">{formatDateTime(cycleEnd)}</dd>
+              </div>
+              <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
+                <dt className="text-slate-500">Total usage</dt>
+                <dd className="font-medium text-slate-800">
+                  {formatBytes(storage?.used_bytes)} of {formatBytes(storage?.quota_bytes)}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
+                <dt className="text-slate-500">Stored</dt>
+                <dd className="font-medium text-slate-800">
+                  {formatBytes(storage?.stored_bytes)}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-4 pb-1">
+                <dt className="text-slate-500">Read (egress)</dt>
+                <dd className="font-medium text-slate-800">
+                  {formatBytes(storage?.read_bytes)}
+                </dd>
+              </div>
+            </dl>
+
+            <p className="mt-3 text-xs text-slate-500">
+              Quota follows the assigned plan. Billing advances the price cycle only — it does not
+              reset stored or read usage.
+            </p>
 
             <div className="mt-4 border-t border-slate-100 pt-4">
               <label className="block text-xs text-slate-500">
@@ -412,9 +465,9 @@ export function UsersPage() {
                   className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
                 >
                   <option value="">Select plan…</option>
-                  {plans.map((plan) => (
-                    <option key={plan.uuid} value={plan.uuid}>
-                      {plan.name} ({formatBytes(plan.quota_bytes)})
+                  {plans.map((p) => (
+                    <option key={p.uuid} value={p.uuid}>
+                      {p.name} ({formatBytes(p.quota_bytes)})
                     </option>
                   ))}
                 </select>
