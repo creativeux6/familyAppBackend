@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\BroadcastingAuthController;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Route;
 
@@ -14,6 +15,9 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::prefix('v1')->group(function () {
+    Route::post('/broadcasting/auth', BroadcastingAuthController::class)
+        ->middleware('auth:sanctum');
+
     foreach (File::glob(app_path('Modules/*/routes.php')) as $moduleRoutes) {
         require $moduleRoutes;
     }

@@ -301,7 +301,9 @@ class GroupService
     {
         return [
             'channel_prefix' => 'private-group.',
-            'auth_endpoint' => url('/broadcasting/auth'),
+            // Prefer API Sanctum auth — /broadcasting/auth is web/session oriented
+            // and rejects mobile bearer tokens with HTTP 403.
+            'auth_endpoint' => url('/api/v1/broadcasting/auth'),
             'reverb' => [
                 'key' => config('broadcasting.connections.reverb.key'),
                 'host' => config('broadcasting.connections.reverb.options.host'),

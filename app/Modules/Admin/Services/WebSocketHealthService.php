@@ -36,8 +36,8 @@ class WebSocketHealthService
             $this->internalHttpSocket(
                 id: 'broadcasting_auth',
                 name: 'Broadcasting auth',
-                description: 'POST /broadcasting/auth — part of Laravel API (php artisan serve)',
-                path: '/broadcasting/auth',
+                description: 'POST /api/v1/broadcasting/auth — Sanctum bearer auth for mobile',
+                path: '/api/v1/broadcasting/auth',
                 method: 'POST',
             ),
             $this->internalHttpSocket(
@@ -108,7 +108,7 @@ class WebSocketHealthService
                 'reachable' => $sockets[0]['status'] === 'ok',
                 'app_key_set' => $appKey !== '',
                 'broadcast_driver' => (string) config('broadcasting.default'),
-                'auth_endpoint' => url('/broadcasting/auth'),
+                'auth_endpoint' => url('/api/v1/broadcasting/auth'),
             ],
             'howto' => [
                 'api' => 'cd backend && php artisan serve --host=0.0.0.0 --port=8000',

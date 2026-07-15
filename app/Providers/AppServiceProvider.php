@@ -40,6 +40,8 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // Keep legacy path for admin web sockets, but it must use Sanctum so
+        // bearer-token mobile clients are authenticated (not session-only 403).
         Broadcast::routes(['middleware' => ['auth:sanctum']]);
 
         Event::listen(MessageSent::class, SendMessagePushNotification::class);
