@@ -40,8 +40,18 @@ export function httpStatusClass(code) {
   return 'bg-slate-50 text-slate-600 border-slate-200';
 }
 
-export function HttpStatusBadge({ code }) {
+export function HttpStatusBadge({ code, method }) {
   if (code == null || code === '') {
+    if (String(method || '').toUpperCase() === 'APP') {
+      return (
+        <span
+          className="inline-flex rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-700"
+          title="App-side client report"
+        >
+          App
+        </span>
+      );
+    }
     return (
       <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-600">
         —

@@ -15,7 +15,7 @@ class ClientErrorReportController
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'status_code' => ['sometimes', 'nullable', 'integer', 'min:400', 'max:599'],
+            'status_code' => ['sometimes', 'nullable', 'integer', 'min:100', 'max:599'],
             'method' => ['sometimes', 'nullable', 'string', 'max:16'],
             'path' => ['sometimes', 'nullable', 'string', 'max:512'],
             'message' => ['required', 'string', 'max:2000'],

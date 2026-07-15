@@ -158,7 +158,9 @@ export function LogsPage() {
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">System logs</h1>
           <p className="mt-1 text-sm text-slate-500">
-            All API responses (success and errors), client-reported failures, and WebSocket health.
+            API responses, WebSocket health, and app-side reports (badge <span className="font-mono">App</span>, path{' '}
+            <span className="font-mono">app/…</span>). Search <span className="font-mono">app/media</span>,{' '}
+            <span className="font-mono">app/chat</span>, or <span className="font-mono">app/stream</span>.
           </p>
         </div>
         <Link to="/web" className="text-sm text-indigo-600 hover:underline">
@@ -171,97 +173,6 @@ export function LogsPage() {
           {error}
         </div>
       ) : null}
-
-      <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="text-sm font-semibold text-slate-800">WebSockets overview</div>
-          {health ? (
-            <span
-              className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold uppercase ${statusBadge(health.status)}`}
-            >
-              {health.status}
-            </span>
-          ) : (
-            <span className="text-sm text-slate-400">Checking…</span>
-          )}
-          {health?.summary ? (
-            <span className="text-xs text-slate-500">
-              {health.summary.ok} ok · {health.summary.degraded} degraded · {health.summary.down}{' '}
-              down
-            </span>
-          ) : null}
-        </div>
-
-        {health ? (
-          <div className="mt-3 grid gap-2 text-xs text-slate-500 sm:grid-cols-2 lg:grid-cols-4">
-            <div>Checked: {new Date(health.checked_at).toLocaleString()}</div>
-            <div>
-              Server: {health.connection?.host}:{health.connection?.port}
-            </div>
-            <div>
-              Client: {health.connection?.client_host}:{health.connection?.client_port}
-            </div>
-            <div>Driver: {health.connection?.broadcast_driver}</div>
-          </div>
-        ) : null}
-
-        <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                <tr>
-                  <th className="px-3 py-2.5 sm:px-4">Socket / check</th>
-                  <th className="px-3 py-2.5 sm:px-4">Type</th>
-                  <th className="px-3 py-2.5 sm:px-4">Endpoint</th>
-                  <th className="px-3 py-2.5 sm:px-4">Status</th>
-                  <th className="hidden px-3 py-2.5 sm:table-cell sm:px-4">Details</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sockets.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="px-4 py-6 text-slate-500">
-                      No socket checks available yet.
-                    </td>
-                  </tr>
-                ) : (
-                  sockets.map((socket) => (
-                    <tr key={socket.id} className="border-t border-slate-100 align-top">
-                      <td className="px-3 py-3 sm:px-4">
-                        <div className="font-medium text-slate-800">{socket.name}</div>
-                        <div className="mt-0.5 text-xs text-slate-500">{socket.description}</div>
-                        <div className="mt-1 text-xs text-slate-500 sm:hidden">{socket.message}</div>
-                      </td>
-                      <td className="px-3 py-3 capitalize text-slate-600 sm:px-4">{socket.type}</td>
-                      <td className="max-w-[12rem] truncate px-3 py-3 font-mono text-xs text-slate-700 sm:max-w-xs sm:px-4">
-                        {socket.endpoint}
-                      </td>
-                      <td className="px-3 py-3 sm:px-4">
-                        <span
-                          className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold uppercase ${statusBadge(socket.status)}`}
-                        >
-                          {socket.status}
-                        </span>
-                        {socket.latency_ms != null ? (
-                          <div className="mt-1 text-[11px] text-slate-400">{socket.latency_ms} ms</div>
-                        ) : null}
-                      </td>
-                      <td className="hidden px-3 py-3 text-slate-600 sm:table-cell sm:px-4">
-                        {socket.message}
-                        {socket.http_status != null ? (
-                          <span className="ml-1 text-xs text-slate-400">
-                            (HTTP {socket.http_status})
-                          </span>
-                        ) : null}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
 
       <form
         onSubmit={applyFilters}
@@ -380,7 +291,7 @@ export function LogsPage() {
                       {log.method} {log.path}
                     </td>
                     <td className="px-4 py-3">
-                      <HttpStatusBadge code={log.status_code} />
+                      <HttpStatusBadge code={log.status_code} method={log.method} />
                     </td>
                     <td className="px-4 py-3 font-mono text-xs text-slate-600">
                       {log.exception_class || '—'}
@@ -399,6 +310,97 @@ export function LogsPage() {
           itemCount={logs.length}
           onPageChange={setPage}
         />
+      </div>
+
+      <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="text-sm font-semibold text-slate-800">WebSockets overview</div>
+          {health ? (
+            <span
+              className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold uppercase ${statusBadge(health.status)}`}
+            >
+              {health.status}
+            </span>
+          ) : (
+            <span className="text-sm text-slate-400">Checking…</span>
+          )}
+          {health?.summary ? (
+            <span className="text-xs text-slate-500">
+              {health.summary.ok} ok · {health.summary.degraded} degraded · {health.summary.down}{' '}
+              down
+            </span>
+          ) : null}
+        </div>
+
+        {health ? (
+          <div className="mt-3 grid gap-2 text-xs text-slate-500 sm:grid-cols-2 lg:grid-cols-4">
+            <div>Checked: {new Date(health.checked_at).toLocaleString()}</div>
+            <div>
+              Server: {health.connection?.host}:{health.connection?.port}
+            </div>
+            <div>
+              Client: {health.connection?.client_host}:{health.connection?.client_port}
+            </div>
+            <div>Driver: {health.connection?.broadcast_driver}</div>
+          </div>
+        ) : null}
+
+        <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-3 py-2.5 sm:px-4">Socket / check</th>
+                  <th className="px-3 py-2.5 sm:px-4">Type</th>
+                  <th className="px-3 py-2.5 sm:px-4">Endpoint</th>
+                  <th className="px-3 py-2.5 sm:px-4">Status</th>
+                  <th className="hidden px-3 py-2.5 sm:table-cell sm:px-4">Details</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sockets.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-6 text-slate-500">
+                      No socket checks available yet.
+                    </td>
+                  </tr>
+                ) : (
+                  sockets.map((socket) => (
+                    <tr key={socket.id} className="border-t border-slate-100 align-top">
+                      <td className="px-3 py-3 sm:px-4">
+                        <div className="font-medium text-slate-800">{socket.name}</div>
+                        <div className="mt-0.5 text-xs text-slate-500">{socket.description}</div>
+                        <div className="mt-1 text-xs text-slate-500 sm:hidden">{socket.message}</div>
+                      </td>
+                      <td className="px-3 py-3 capitalize text-slate-600 sm:px-4">{socket.type}</td>
+                      <td className="max-w-[12rem] truncate px-3 py-3 font-mono text-xs text-slate-700 sm:max-w-xs sm:px-4">
+                        {socket.endpoint}
+                      </td>
+                      <td className="px-3 py-3 sm:px-4">
+                        <span
+                          className={`inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold uppercase ${statusBadge(socket.status)}`}
+                        >
+                          {socket.status}
+                        </span>
+                        {socket.latency_ms != null ? (
+                          <div className="mt-1 text-[11px] text-slate-400">{socket.latency_ms} ms</div>
+                        ) : null}
+                      </td>
+                      <td className="hidden px-3 py-3 text-slate-600 sm:table-cell sm:px-4">
+                        {socket.message}
+                        {socket.http_status != null ? (
+                          <span className="ml-1 text-xs text-slate-400">
+                            (HTTP {socket.http_status})
+                          </span>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
       {detailLoading ? (
@@ -443,7 +445,7 @@ export function LogsPage() {
               </button>
             </div>
             <div className="mb-4">
-              <HttpStatusBadge code={selected.status_code} />
+              <HttpStatusBadge code={selected.status_code} method={selected.method} />
             </div>
             <div className="grid gap-3 text-sm sm:grid-cols-2">
               <div>
