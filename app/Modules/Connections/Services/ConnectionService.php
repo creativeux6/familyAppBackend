@@ -5,6 +5,7 @@ namespace App\Modules\Connections\Services;
 use App\Models\Connection;
 use App\Models\FamilyMember;
 use App\Models\User;
+use App\Modules\Connections\Events\ConnectionUpdated;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -54,11 +55,20 @@ class ConnectionService
         ];
     }
 
+    public function pendingReceivedCount(User $user): int
+    {
+        return Connection::query()
+            ->where('recipient_user_id', $user->id)
+            ->where('status', 'pending')
+            ->count();
+    }
+
     /** @return array<string, mixed> */
     public function sendRequest(User $user, string $targetUserUuid): array
     {
         $target = $this->resolveConnectableUser($user, $targetUserUuid);
         $connection = $this->createOrRefreshRequest($user, $target);
+        $this->notifyParty($user, $target, $connection, 'request_sent');
 
         return $this->formatConnection($connection->load(['requester:id,uuid,display_name', 'recipient:id,uuid,display_name']), $user);
     }
@@ -114,7 +124,11 @@ class ConnectionService
             'connected_at' => now(),
         ]);
 
-        return $this->formatConnection($connection->fresh(['requester:id,uuid,display_name', 'recipient:id,uuid,display_name']), $user);
+        $fresh = $connection->fresh(['requester:id,uuid,display_name', 'recipient:id,uuid,display_name']);
+        $other = $fresh->requester_user_id === $user->id ? $fresh->recipient : $fresh->requester;
+        $this->notifyParty($user, $other, $fresh, 'accepted');
+
+        return $this->formatConnection($fresh, $user);
     }
 
     /** @return array<string, mixed> */
@@ -136,7 +150,11 @@ class ConnectionService
 
         $connection->update(['status' => 'rejected', 'connected_at' => null]);
 
-        return $this->formatConnection($connection->fresh(['requester:id,uuid,display_name', 'recipient:id,uuid,display_name']), $user);
+        $fresh = $connection->fresh(['requester:id,uuid,display_name', 'recipient:id,uuid,display_name']);
+        $other = $fresh->requester_user_id === $user->id ? $fresh->recipient : $fresh->requester;
+        $this->notifyParty($user, $other, $fresh, 'rejected');
+
+        return $this->formatConnection($fresh, $user);
     }
 
     /** @return array<string, mixed> */
@@ -152,7 +170,11 @@ class ConnectionService
 
         $connection->update(['status' => 'disconnected', 'connected_at' => null]);
 
-        return $this->formatConnection($connection->fresh(['requester:id,uuid,display_name', 'recipient:id,uuid,display_name']), $user);
+        $fresh = $connection->fresh(['requester:id,uuid,display_name', 'recipient:id,uuid,display_name']);
+        $other = $fresh->requester_user_id === $user->id ? $fresh->recipient : $fresh->requester;
+        $this->notifyParty($user, $other, $fresh, 'disconnected');
+
+        return $this->formatConnection($fresh, $user);
     }
 
     /** @return array<string, mixed> */
@@ -168,7 +190,11 @@ class ConnectionService
 
         $connection->update(['status' => 'blocked', 'connected_at' => null]);
 
-        return $this->formatConnection($connection->fresh(['requester:id,uuid,display_name', 'recipient:id,uuid,display_name']), $user);
+        $fresh = $connection->fresh(['requester:id,uuid,display_name', 'recipient:id,uuid,display_name']);
+        $other = $fresh->requester_user_id === $user->id ? $fresh->recipient : $fresh->requester;
+        $this->notifyParty($user, $other, $fresh, 'blocked');
+
+        return $this->formatConnection($fresh, $user);
     }
 
     /** @param  list<string>  $targetUserUuids */
@@ -190,6 +216,7 @@ class ConnectionService
                 }
 
                 $connection = $this->createOrRefreshRequest($user, $target);
+                $this->notifyParty($user, $target, $connection, 'request_sent');
                 $created++;
                 $connections[] = $this->formatConnection(
                     $connection->load(['requester:id,uuid,display_name', 'recipient:id,uuid,display_name']),
@@ -246,6 +273,20 @@ class ConnectionService
             'recipient_user_id' => $recipient->id,
             'status' => 'pending',
         ]);
+    }
+
+    private function notifyParty(User $actor, User $notifyUser, Connection $connection, string $action): void
+    {
+        if ($actor->id === $notifyUser->id) {
+            return;
+        }
+
+        event(new ConnectionUpdated(
+            actor: $actor,
+            notifyUser: $notifyUser,
+            connection: $connection,
+            action: $action,
+        ));
     }
 
     private function resolveConnectableUser(User $user, string $targetUserUuid): User

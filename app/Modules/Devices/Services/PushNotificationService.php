@@ -5,6 +5,7 @@ namespace App\Modules\Devices\Services;
 use App\Models\FamilyMember;
 use App\Models\Message;
 use App\Models\User;
+use App\Modules\Connections\Services\ConnectionService;
 use App\Modules\Groups\Services\GroupService;
 use App\Modules\Media\Services\MediaShareInboxService;
 
@@ -14,6 +15,7 @@ class PushNotificationService
         private readonly DevicePushTokenService $tokenService,
         private readonly FcmClient $fcmClient,
         private readonly GroupService $groupService,
+        private readonly MediaShareInboxService $shareInboxService,
     ) {}
 
     public function notifyNewMessage(Message $message): void
@@ -117,6 +119,52 @@ class PushNotificationService
                     'unread_count' => (string) $unreadCount,
                 ],
                 0,
+            );
+        }
+    }
+
+    public function notifyConnectionUpdated(
+        User $actor,
+        User $recipient,
+        string $connectionUuid,
+        string $action,
+        string $status,
+    ): void {
+        if (! $this->fcmClient->isConfigured()) {
+            return;
+        }
+
+        if ((int) $actor->id === (int) $recipient->id) {
+            return;
+        }
+
+        // OS alerts are most useful for incoming requests; other actions refresh in-app via Reverb.
+        if ($action !== 'request_sent') {
+            return;
+        }
+
+        $tokens = $this->tokenService->tokensForUser($recipient);
+        if ($tokens === []) {
+            return;
+        }
+
+        $actorName = $actor->display_name ?: 'Someone';
+        $pendingCount = app(ConnectionService::class)->pendingReceivedCount($recipient);
+
+        foreach ($tokens as $token) {
+            $this->fcmClient->send(
+                $token,
+                'Connection request',
+                "{$actorName} wants to connect with you",
+                [
+                    'type' => 'connection.updated',
+                    'action' => $action,
+                    'connection_uuid' => $connectionUuid,
+                    'status' => $status,
+                    'actor_uuid' => (string) $actor->uuid,
+                    'pending_received_count' => (string) $pendingCount,
+                ],
+                $pendingCount,
             );
         }
     }

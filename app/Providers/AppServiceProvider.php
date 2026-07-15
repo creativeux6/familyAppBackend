@@ -5,9 +5,11 @@ namespace App\Providers;
 use App\Contracts\Events\EventManagementServiceInterface;
 use App\Contracts\FamilyGraph\FamilyGraphRepositoryInterface;
 use App\Contracts\Payments\PaymentGatewayInterface;
+use App\Listeners\SendConnectionPushNotification;
 use App\Listeners\SendFamilyJoinPushNotification;
 use App\Listeners\SendMediaSharedPushNotification;
 use App\Listeners\SendMessagePushNotification;
+use App\Modules\Connections\Events\ConnectionUpdated;
 use App\Modules\Events\Services\NullEventManagementService;
 use App\Modules\FamilyTree\Events\FamilyMemberJoined;
 use App\Modules\Groups\Events\MessageSent;
@@ -43,6 +45,7 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(MessageSent::class, SendMessagePushNotification::class);
         Event::listen(FamilyMemberJoined::class, SendFamilyJoinPushNotification::class);
         Event::listen(MediaSharedWithUser::class, SendMediaSharedPushNotification::class);
+        Event::listen(ConnectionUpdated::class, SendConnectionPushNotification::class);
 
         $this->startScheduleWorkerWithServe();
     }

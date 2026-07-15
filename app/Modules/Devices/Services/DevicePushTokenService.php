@@ -9,13 +9,14 @@ class DevicePushTokenService
 {
     public function register(User $user, string $token, string $platform = 'android'): void
     {
-        DevicePushToken::query()->updateOrCreate(
-            [
-                'user_id' => $user->id,
-                'token' => $token,
-            ],
-            ['platform' => $platform],
-        );
+        // One device token belongs to at most one account (reclaim on login switch).
+        DevicePushToken::query()->where('token', $token)->delete();
+
+        DevicePushToken::query()->create([
+            'user_id' => $user->id,
+            'token' => $token,
+            'platform' => $platform,
+        ]);
     }
 
     public function remove(User $user, string $token): void
