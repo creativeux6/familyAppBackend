@@ -16,7 +16,7 @@ export function formatPriceCents(cents, currency = 'USD') {
       currency: currency || 'USD',
     }).format(amount);
   } catch {
-    return `$${(amount).toFixed(2)}`;
+    return `$${amount.toFixed(2)}`;
   }
 }
 
@@ -71,56 +71,159 @@ export function mergeStatusCodes(fromApi = []) {
   );
 }
 
-export function PaginationBar({ meta, page, loading, onPageChange, itemCount = 0 }) {
+/**
+ * Build page tokens for numbered pagination, e.g. [1, 2, 3, '…', 20, 21].
+ * @param {number} current
+ * @param {number} last
+ * @param {number} [siblingCount]
+ * @returns {Array<number|string>}
+ */
+export function buildPageItems(current, last, siblingCount = 1) {
+  const total = Math.max(1, Number(last) || 1);
+  const active = Math.min(Math.max(1, Number(current) || 1), total);
+
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+
+  const pages = new Set([1, total]);
+  for (let i = active - siblingCount; i <= active + siblingCount; i += 1) {
+    if (i >= 1 && i <= total) {
+      pages.add(i);
+    }
+  }
+
+  // Wider window near edges so patterns like "…, 20, 21" feel natural.
+  if (active <= 3) {
+    pages.add(2);
+    pages.add(3);
+    pages.add(4);
+  }
+  if (active >= total - 2) {
+    pages.add(total - 1);
+    pages.add(total - 2);
+    pages.add(total - 3);
+  }
+
+  const sorted = [...pages].sort((a, b) => a - b);
+  const items = [];
+  let previous = null;
+
+  for (const pageNumber of sorted) {
+    if (previous !== null && pageNumber - previous > 1) {
+      items.push('…');
+    }
+    items.push(pageNumber);
+    previous = pageNumber;
+  }
+
+  return items;
+}
+
+function pageButtonClass(active, disabled) {
+  if (disabled && !active) {
+    return 'cursor-not-allowed border-slate-200 bg-white text-slate-400 opacity-40';
+  }
+  if (active) {
+    return 'cursor-default border-indigo-600 bg-indigo-600 text-white shadow-sm';
+  }
+  return 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50';
+}
+
+export function PaginationBar({
+  meta,
+  page,
+  loading = false,
+  onPageChange,
+  itemCount = 0,
+  siblingCount = 1,
+}) {
   const current = meta?.current_page ?? page ?? 1;
-  const last = meta?.last_page ?? 1;
+  const last = Math.max(1, meta?.last_page ?? 1);
   const perPage = meta?.per_page ?? 20;
   const total = meta?.total ?? itemCount;
   const from = total === 0 ? 0 : (current - 1) * perPage + 1;
   const to = total === 0 ? 0 : (current - 1) * perPage + itemCount;
+  const pageItems = buildPageItems(current, last, siblingCount);
+  const atStart = current <= 1 || loading;
+  const atEnd = current >= last || loading;
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/80 px-4 py-3 text-xs text-slate-600">
+    <div className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50/80 px-4 py-3 text-xs text-slate-600 sm:flex-row sm:items-center sm:justify-between">
       <span>
-        Showing {from}–{to} of {total} · {perPage} per page
+        Showing {from}–{to} of {total} · {perPage} per page · Page {current} of {last}
       </span>
-      <div className="flex flex-wrap items-center gap-2">
+
+      <nav className="flex flex-wrap items-center gap-1.5" aria-label="Pagination">
         <button
           type="button"
-          disabled={current <= 1 || loading}
+          aria-label="First page"
+          disabled={atStart}
           onClick={() => onPageChange(1)}
-          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 font-medium hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          className={`rounded-lg border px-2.5 py-1.5 font-medium ${pageButtonClass(false, atStart)}`}
         >
           First
         </button>
         <button
           type="button"
-          disabled={current <= 1 || loading}
+          aria-label="Previous page"
+          disabled={atStart}
           onClick={() => onPageChange(Math.max(1, current - 1))}
-          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 font-medium hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          className={`rounded-lg border px-2.5 py-1.5 font-medium ${pageButtonClass(false, atStart)}`}
         >
-          Prev
+          Previous
         </button>
-        <span className="px-1 font-semibold text-slate-800">
-          Page {current} / {last}
-        </span>
+
+        <div className="mx-0.5 flex flex-wrap items-center gap-1">
+          {pageItems.map((item, index) => {
+            if (item === '…') {
+              return (
+                <span
+                  key={`ellipsis-${index}`}
+                  className="px-1.5 py-1.5 font-semibold text-slate-400"
+                  aria-hidden
+                >
+                  …
+                </span>
+              );
+            }
+
+            const active = item === current;
+            return (
+              <button
+                key={item}
+                type="button"
+                aria-label={`Page ${item}`}
+                aria-current={active ? 'page' : undefined}
+                disabled={loading || active}
+                onClick={() => onPageChange(item)}
+                className={`min-w-[2rem] rounded-lg border px-2 py-1.5 text-center font-semibold tabular-nums ${pageButtonClass(active, loading)}`}
+              >
+                {item}
+              </button>
+            );
+          })}
+        </div>
+
         <button
           type="button"
-          disabled={current >= last || loading}
-          onClick={() => onPageChange(current + 1)}
-          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 font-medium hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          aria-label="Next page"
+          disabled={atEnd}
+          onClick={() => onPageChange(Math.min(last, current + 1))}
+          className={`rounded-lg border px-2.5 py-1.5 font-medium ${pageButtonClass(false, atEnd)}`}
         >
           Next
         </button>
         <button
           type="button"
-          disabled={current >= last || loading}
+          aria-label="Last page"
+          disabled={atEnd}
           onClick={() => onPageChange(last)}
-          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 font-medium hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+          className={`rounded-lg border px-2.5 py-1.5 font-medium ${pageButtonClass(false, atEnd)}`}
         >
           Last
         </button>
-      </div>
+      </nav>
     </div>
   );
 }

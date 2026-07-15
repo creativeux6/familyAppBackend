@@ -42,6 +42,11 @@ class User extends Authenticatable
         return $this->hasOne(FamilyMember::class);
     }
 
+    public function planAssignments(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(UserPlanAssignment::class);
+    }
+
     protected static function booted(): void
     {
         static::creating(function (User $user): void {

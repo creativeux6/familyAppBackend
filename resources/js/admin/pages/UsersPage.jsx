@@ -207,8 +207,10 @@ export function UsersPage() {
               <tr>
                 <th className="px-4 py-3">User</th>
                 <th className="px-4 py-3">Phone</th>
-                <th className="px-4 py-3">Roles</th>
+                <th className="px-4 py-3">Plan</th>
+                <th className="px-4 py-3">Quota</th>
                 <th className="px-4 py-3">Usage</th>
+                <th className="px-4 py-3">Renewal</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Actions</th>
               </tr>
@@ -217,14 +219,14 @@ export function UsersPage() {
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i} className="border-t border-slate-100">
-                    <td colSpan={6} className="px-4 py-3">
+                    <td colSpan={8} className="px-4 py-3">
                       <Shimmer className="h-4 w-full" />
                     </td>
                   </tr>
                 ))
               ) : users.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-slate-500">
+                  <td colSpan={8} className="px-4 py-8 text-slate-500">
                     No users found.
                   </td>
                 </tr>
@@ -237,11 +239,27 @@ export function UsersPage() {
                         {user.display_name}
                       </td>
                       <td className="px-4 py-3 font-mono text-xs text-slate-600">{user.phone}</td>
-                      <td className="px-4 py-3 text-xs text-slate-600">
-                        {(user.roles || []).join(', ') || 'user'}
+                      <td className="px-4 py-3 text-slate-700">
+                        <div className="font-medium">{user.plan_name || '—'}</div>
+                        {user.plan_source ? (
+                          <div className="mt-0.5 text-[11px] text-slate-400">{user.plan_source}</div>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600">
+                        {user.quota_bytes != null ? formatBytes(user.quota_bytes) : '—'}
                       </td>
                       <td className="px-4 py-3 text-slate-600">
                         {formatBytes(user.storage_total_used_bytes ?? user.storage_used_bytes)}
+                        {user.quota_bytes != null ? (
+                          <span className="text-slate-400"> / {formatBytes(user.quota_bytes)}</span>
+                        ) : null}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-600">
+                        {user.renewal_date
+                          ? new Date(user.renewal_date).toLocaleDateString()
+                          : user.plan_name
+                            ? 'No end date'
+                            : '—'}
                       </td>
                       <td className="px-4 py-3">
                         <span
@@ -334,12 +352,34 @@ export function UsersPage() {
                 Roles: {(selected.roles || []).join(', ') || 'user'}
               </div>
               <div>
+                Plan:{' '}
+                {selected.storage?.plan?.name ||
+                  selected.plan_assignment?.plan?.name ||
+                  '—'}
+                {(selected.storage?.quota_bytes != null ||
+                  selected.plan_assignment?.plan?.quota_bytes != null) && (
+                  <>
+                    {' '}
+                    · Quota{' '}
+                    {formatBytes(
+                      selected.storage?.quota_bytes ??
+                        selected.plan_assignment?.plan?.quota_bytes,
+                    )}
+                  </>
+                )}
+              </div>
+              <div>
+                Renewal:{' '}
+                {selected.plan_assignment?.ends_at
+                  ? new Date(selected.plan_assignment.ends_at).toLocaleString()
+                  : selected.storage?.plan || selected.plan_assignment
+                    ? 'No end date'
+                    : '—'}
+              </div>
+              <div>
                 Storage:{' '}
                 {formatBytes(selected.storage?.used_bytes)} of{' '}
                 {formatBytes(selected.storage?.quota_bytes)}
-                {selected.storage?.plan?.name
-                  ? ` · ${selected.storage.plan.name}`
-                  : ''}
               </div>
               <div className="text-xs text-slate-500">
                 Stored {formatBytes(selected.storage?.stored_bytes)} · Read{' '}

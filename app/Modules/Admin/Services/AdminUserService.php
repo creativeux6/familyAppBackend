@@ -19,7 +19,20 @@ class AdminUserService
     /** @return array<string, mixed> */
     public function list(?string $search, bool $includeTrashed, int $page, int $perPage): array
     {
-        $query = User::query()->with('roles');
+        $now = now();
+
+        $query = User::query()->with([
+            'roles',
+            'planAssignments' => function ($q) use ($now) {
+                $q->where('is_active', true)
+                    ->where('starts_at', '<=', $now)
+                    ->where(function ($inner) use ($now) {
+                        $inner->whereNull('ends_at')->orWhere('ends_at', '>', $now);
+                    })
+                    ->with('plan')
+                    ->latest('id');
+            },
+        ]);
 
         if ($includeTrashed) {
             $query->withTrashed();
@@ -183,6 +196,12 @@ class AdminUserService
     /** @return array<string, mixed> */
     private function formatListUser(User $user): array
     {
+        $assignment = $user->relationLoaded('planAssignments')
+            ? $user->planAssignments->first()
+            : $this->planAssignmentService->activeAssignment($user);
+
+        $plan = $assignment?->plan;
+
         return [
             'uuid' => $user->uuid,
             'phone' => $user->phone,
@@ -191,6 +210,12 @@ class AdminUserService
             'storage_used_bytes' => $user->storage_used_bytes,
             'storage_read_bytes' => $user->storage_read_bytes,
             'storage_total_used_bytes' => (int) $user->storage_used_bytes + (int) $user->storage_read_bytes,
+            'plan_name' => $plan?->name,
+            'plan_slug' => $plan?->slug,
+            'quota_bytes' => $plan ? (int) $plan->quota_bytes : null,
+            'plan_starts_at' => $assignment?->starts_at?->toIso8601String(),
+            'renewal_date' => $assignment?->ends_at?->toIso8601String(),
+            'plan_source' => $assignment?->source,
             'roles' => $user->roles->pluck('name')->values()->all(),
             'deleted_at' => $user->deleted_at?->toIso8601String(),
             'created_at' => $user->created_at?->toIso8601String(),
