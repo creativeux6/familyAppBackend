@@ -24,8 +24,12 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Outermost API middleware so auth / validation failures are still logged.
         $middleware->api(prepend: [
+            \App\Http\Middleware\SecurityHeaders::class,
             \App\Http\Middleware\LogApiResponse::class,
         ]);
+
+        // Default ceiling for authenticated API traffic (per user / IP).
+        $middleware->throttleApi('api');
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

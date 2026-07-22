@@ -7,6 +7,7 @@ use App\Modules\StoragePlans\Services\PlanAssignmentService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Role;
@@ -21,9 +22,10 @@ class PhoneAuthService
     {
         $phone = $this->normalizePhone($phone);
 
+        // Do not reveal whether the phone is already registered (enumeration).
         if (User::query()->where('phone', $phone)->exists()) {
             throw ValidationException::withMessages([
-                'phone' => ['Phone number is already registered.'],
+                'phone' => ['Unable to complete registration with these details.'],
             ]);
         }
 
@@ -59,14 +61,30 @@ class PhoneAuthService
     public function login(string $phone, string $password, string $tokenName = 'mobile'): array
     {
         $phone = $this->normalizePhone($phone);
+        $failureKey = 'login-fail:'.hash('sha256', $phone);
+
+        // Extra lockout after repeated wrong passwords for the same phone.
+        if (RateLimiter::tooManyAttempts($failureKey, 8)) {
+            $seconds = RateLimiter::availableIn($failureKey);
+
+            throw ValidationException::withMessages([
+                'phone' => [
+                    'Too many failed login attempts. Try again in '.$seconds.' seconds.',
+                ],
+            ]);
+        }
 
         $user = User::query()->where('phone', $phone)->first();
 
         if (! $user || ! Hash::check($password, $user->password)) {
+            RateLimiter::hit($failureKey, 60 * 15);
+
             throw ValidationException::withMessages([
                 'phone' => ['These credentials do not match our records.'],
             ]);
         }
+
+        RateLimiter::clear($failureKey);
 
         $user->tokens()->delete();
         $token = $user->createToken($tokenName)->plainTextToken;
@@ -126,10 +144,17 @@ class PhoneAuthService
             ]
         );
 
-        Log::info('Password reset token issued', [
-            'phone' => $phone,
-            'reset_token' => $token,
-        ]);
+        // Never log plaintext reset tokens outside local/testing.
+        if (app()->environment(['local', 'testing'])) {
+            Log::info('Password reset token issued', [
+                'phone' => $phone,
+                'reset_token' => $token,
+            ]);
+        } else {
+            Log::info('Password reset token issued', [
+                'phone_hash' => hash('sha256', $phone),
+            ]);
+        }
 
         $payload = ['message' => $message];
 
@@ -144,10 +169,11 @@ class PhoneAuthService
     {
         $phone = $this->normalizePhone($phone);
         $user = User::query()->where('phone', $phone)->first();
+        $invalidMessage = 'This password reset request is invalid or has expired.';
 
         if (! $user) {
             throw ValidationException::withMessages([
-                'phone' => ['Invalid reset request.'],
+                'token' => [$invalidMessage],
             ]);
         }
 
@@ -155,13 +181,13 @@ class PhoneAuthService
 
         if (! $row || ! Hash::check($token, $row->token)) {
             throw ValidationException::withMessages([
-                'token' => ['This password reset token is invalid.'],
+                'token' => [$invalidMessage],
             ]);
         }
 
         if ($row->created_at && \Illuminate\Support\Carbon::parse($row->created_at)->lt(now()->subHour())) {
             throw ValidationException::withMessages([
-                'token' => ['This password reset token has expired.'],
+                'token' => [$invalidMessage],
             ]);
         }
 

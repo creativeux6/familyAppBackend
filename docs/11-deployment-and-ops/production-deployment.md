@@ -358,6 +358,9 @@ sudo systemctl reload php8.3-fpm
 
 Assumptions: family app, ~5–20 msgs/user/day, ~30% DAU, avg group size 5.
 
+Full baseline (flow rankings, code/DB ratings, improvement backlog):
+[implementation-capacity-report.md](../00-overview/implementation-capacity-report.md).
+
 ### Single VPS (2 vCPU / 4 GB)
 
 | Metric | Comfortable range |

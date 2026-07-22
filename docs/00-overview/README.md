@@ -28,7 +28,7 @@ A mobile-first family networking platform. Members register with phone + passwor
 
 | Module | Folder | Description |
 |--------|--------|-------------|
-| 00 | `00-overview/` | Vision, architecture, migrations |
+| 00 | `00-overview/` | Vision, architecture, migrations, **[implementation & capacity report](./implementation-capacity-report.md)** |
 | 01 | `01-auth-and-roles/` | Phone + password auth, roles, [profile](./01-auth-and-roles/profile-api-contract.md) |
 | 02 | `02-onboarding-and-family-matching/` | Questionnaire, matching |
 | 03 | `03-connections-and-privacy/` | Connections, anonymity |
@@ -67,6 +67,12 @@ See [glossary.md](./glossary.md).
 ## Architecture
 
 See [architecture.md](./architecture.md).
+
+## Implementation & capacity report
+
+Baseline audit (Jul 2026) with flow rankings, code/DB ratings, capacity bands, and an improvement backlog checklist:
+
+**[implementation-capacity-report.md](./implementation-capacity-report.md)**
 
 ## Database
 
