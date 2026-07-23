@@ -365,6 +365,8 @@ class FamilyJoinService
             });
 
         $canonical->update(['user_id' => $user->id]);
+        app(\App\Modules\Avatars\Services\AvatarService::class)
+            ->clearMemberAvatarOnClaim($canonical->fresh());
     }
 
     private function wireJoinRelation(

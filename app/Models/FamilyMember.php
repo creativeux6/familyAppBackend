@@ -22,6 +22,8 @@ class FamilyMember extends Model
         'uuid', 'member_code', 'family_uuid', 'user_id', 'first_name', 'middle_name', 'last_name',
         'maiden_name', 'date_of_birth', 'date_of_death', 'birthplace', 'gender',
         'is_living', 'is_anonymous', 'match_confidence',
+        'avatar_master_key', 'avatar_thumb_key', 'avatar_master_bytes', 'avatar_thumb_bytes',
+        'avatar_updated_at', 'avatar_updated_by_user_id',
     ];
 
     protected static function booted(): void
@@ -41,6 +43,9 @@ class FamilyMember extends Model
             'is_living' => 'boolean',
             'is_anonymous' => 'boolean',
             'match_confidence' => 'decimal:4',
+            'avatar_master_bytes' => 'integer',
+            'avatar_thumb_bytes' => 'integer',
+            'avatar_updated_at' => 'datetime',
         ];
     }
 

@@ -229,6 +229,8 @@ class PhoneAuthService
             'is_anonymous' => $user->is_anonymous,
             'roles' => $user->getRoleNames()->values()->all(),
             'permissions' => $user->getAllPermissions()->pluck('name')->values()->all(),
+            'avatar' => app(\App\Modules\Avatars\Services\AvatarService::class)
+                ->userAvatarPayload($user),
         ];
     }
 }

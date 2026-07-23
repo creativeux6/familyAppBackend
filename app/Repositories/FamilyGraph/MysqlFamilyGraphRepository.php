@@ -141,6 +141,8 @@ class MysqlFamilyGraphRepository implements FamilyGraphRepositoryInterface
             'date_of_death' => $member->date_of_death?->format('Y-m-d'),
             'is_registered' => $member->user_id !== null,
             'user_uuid' => $member->user?->uuid,
+            'avatar' => app(\App\Modules\Avatars\Services\AvatarService::class)
+                ->memberAvatarPayload($member),
             'depth' => $depth,
         ];
     }

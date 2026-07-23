@@ -25,6 +25,11 @@ use Spatie\Permission\Traits\HasRoles;
     'marital_status',
     'storage_used_bytes',
     'storage_read_bytes',
+    'avatar_master_key',
+    'avatar_thumb_key',
+    'avatar_master_bytes',
+    'avatar_thumb_bytes',
+    'avatar_updated_at',
 ])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
@@ -68,6 +73,9 @@ class User extends Authenticatable
             'is_anonymous' => 'boolean',
             'storage_used_bytes' => 'integer',
             'storage_read_bytes' => 'integer',
+            'avatar_master_bytes' => 'integer',
+            'avatar_thumb_bytes' => 'integer',
+            'avatar_updated_at' => 'datetime',
         ];
     }
 }

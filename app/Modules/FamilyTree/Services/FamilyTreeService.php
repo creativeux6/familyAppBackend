@@ -437,6 +437,8 @@ class FamilyTreeService
                 'is_registered' => false,
                 'is_ghost' => false,
                 'user_uuid' => null,
+                'avatar' => app(\App\Modules\Avatars\Services\AvatarService::class)
+                    ->memberAvatarPayload($member),
             ];
         }
 
@@ -452,6 +454,8 @@ class FamilyTreeService
             'is_registered' => $member->user_id !== null,
             'is_ghost' => false,
             'user_uuid' => $member->user?->uuid,
+            'avatar' => app(\App\Modules\Avatars\Services\AvatarService::class)
+                ->memberAvatarPayload($member),
         ];
     }
 }
