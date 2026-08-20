@@ -9,9 +9,11 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('storage_plans', function (Blueprint $table) {
-            $table->text('description')->nullable()->after('name');
-        });
+        if (! Schema::hasColumn('storage_plans', 'description')) {
+            Schema::table('storage_plans', function (Blueprint $table) {
+                $table->text('description')->nullable()->after('name');
+            });
+        }
 
         // Free-plan auto-assign uses system_default (was missing from original enum).
         if (Schema::getConnection()->getDriverName() === 'mysql') {
@@ -25,8 +27,10 @@ return new class extends Migration
             DB::statement("ALTER TABLE user_plan_assignments MODIFY COLUMN source ENUM('admin_manual', 'payment') NOT NULL DEFAULT 'admin_manual'");
         }
 
-        Schema::table('storage_plans', function (Blueprint $table) {
-            $table->dropColumn('description');
-        });
+        if (Schema::hasColumn('storage_plans', 'description')) {
+            Schema::table('storage_plans', function (Blueprint $table) {
+                $table->dropColumn('description');
+            });
+        }
     }
 };

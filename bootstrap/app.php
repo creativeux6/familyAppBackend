@@ -28,8 +28,8 @@ return Application::configure(basePath: dirname(__DIR__))
             \App\Http\Middleware\LogApiResponse::class,
         ]);
 
-        // Default ceiling for authenticated API traffic (per user / IP).
-        $middleware->throttleApi('api');
+        // Auth routes use dedicated IP/phone throttles (see Auth routes + security.php).
+        // In-app API traffic is not globally throttled so gallery/tree/chat remain responsive.
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

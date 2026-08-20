@@ -2,15 +2,15 @@
 
 Base path: `/api/v1/groups` (requires Bearer token)
 
-WhatsApp-style **groups** (2+ members) and **direct chats** (1:1 with a connected user). Both use the same encrypted message pipeline and Reverb channels.
+WhatsApp-style **groups** (2+ members) and **direct chats** (1:1). Both use the same encrypted message pipeline and Reverb channels.
 
-Only users you have **connected** with can be added to groups or direct chats.
+People in your **phone contacts who are registered**, or users you have a **family connection** with, can be added to groups or direct chats. Family connection is not required to chat.
 
 Messages are **E2E encrypted** on the client — the server stores ciphertext only. Real-time delivery uses **Laravel Reverb** WebSockets.
 
 ## POST /groups
 
-Create a group. Creator becomes `owner`. Must include at least one other connected member.
+Create a group. Creator becomes `owner`. Must include at least one other eligible member.
 
 **Request:**
 ```json

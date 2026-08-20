@@ -20,8 +20,6 @@ return [
     'password_per_minute_ip' => (int) env('AUTH_PASSWORD_PER_MINUTE_IP', 5),
     'password_per_hour_ip' => (int) env('AUTH_PASSWORD_PER_HOUR_IP', 15),
 
-    /*
-    | General authenticated API ceiling (per user or IP).
-    */
-    'api_per_minute' => (int) env('API_RATE_LIMIT_PER_MINUTE', 120),
+    'friends_sync_per_minute_user' => (int) env('FRIENDS_SYNC_PER_MINUTE_USER', 10),
+    'friends_sync_per_minute_ip' => (int) env('FRIENDS_SYNC_PER_MINUTE_IP', 20),
 ];

@@ -2,12 +2,15 @@
 
 namespace App\Modules\Groups\Services;
 
+use App\Contracts\FamilyGraph\FamilyGraphRepositoryInterface;
 use App\Models\Connection;
+use App\Models\FamilyMember;
 use App\Models\Group;
 use App\Models\GroupEncryptionGeneration;
 use App\Models\GroupMember;
 use App\Models\Message;
 use App\Models\User;
+use App\Modules\FamilyTree\Enums\TreeViewMode;
 use App\Modules\Groups\Events\GroupDeleted;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -18,6 +21,7 @@ class GroupService
 {
     public function __construct(
         private readonly ConnectedMemberGuard $connectedMemberGuard,
+        private readonly FamilyGraphRepositoryInterface $graphRepository,
     ) {}
 
     /** @param  list<string>  $memberUserUuids */
@@ -27,7 +31,7 @@ class GroupService
 
         if (count($memberUserUuids) < 1) {
             throw ValidationException::withMessages([
-                'member_user_uuids' => ['Add at least one connected family member (minimum 2 people per group).'],
+                'member_user_uuids' => ['Add at least one person who is on the app (minimum 2 people per group).'],
             ]);
         }
 
@@ -437,6 +441,11 @@ class GroupService
             ->get();
 
         $contacts = [];
+        $kinshipByUserId = $this->kinshipLabelsFor($user, $connections->map(
+            fn (Connection $connection) => $connection->requester_user_id === $user->id
+                ? $connection->recipient_user_id
+                : $connection->requester_user_id
+        )->all());
 
         foreach ($connections as $connection) {
             $other = $connection->requester_user_id === $user->id
@@ -457,6 +466,8 @@ class GroupService
                 'user_uuid' => $other->uuid,
                 'display_name' => $other->display_name,
                 'direct_group_uuid' => $directGroup?->uuid,
+                'is_connected_family' => true,
+                'kinship_label' => $kinshipByUserId[$other->id] ?? 'Family',
             ];
         }
 
@@ -503,6 +514,47 @@ class GroupService
             'user_uuid' => $otherMember->user->uuid,
             'display_name' => $otherMember->user->display_name,
         ];
+    }
+
+    /**
+     * @param  list<int>  $otherUserIds
+     * @return array<int, string>
+     */
+    private function kinshipLabelsFor(User $actor, array $otherUserIds): array
+    {
+        $otherUserIds = array_values(array_unique(array_filter($otherUserIds)));
+        if ($otherUserIds === []) {
+            return [];
+        }
+
+        $viewerMember = FamilyMember::query()->where('user_id', $actor->id)->first();
+        if (! $viewerMember) {
+            return [];
+        }
+
+        $targetMembers = FamilyMember::query()
+            ->where('family_uuid', $viewerMember->family_uuid)
+            ->whereIn('user_id', $otherUserIds)
+            ->get(['uuid', 'user_id']);
+
+        if ($targetMembers->isEmpty()) {
+            return [];
+        }
+
+        $graph = $this->graphRepository->loadFamilyGraph($viewerMember->family_uuid);
+        $labels = [];
+
+        foreach ($targetMembers as $member) {
+            $kinship = $this->graphRepository->resolveKinship(
+                $viewerMember->uuid,
+                $member->uuid,
+                TreeViewMode::All,
+                $graph['edges'],
+            );
+            $labels[$member->user_id] = $kinship['kinship_label'] ?? 'Family';
+        }
+
+        return $labels;
     }
 
     private function broadcastGroupDeleted(string $groupUuid): void

@@ -124,9 +124,9 @@ class MediaAccessService
             return;
         }
 
-        if (! $this->connectedMemberGuard->areConnected($owner, $recipient)) {
+        if (! $this->connectedMemberGuard->canChatOrShare($owner, $recipient)) {
             throw ValidationException::withMessages([
-                'user_uuid' => ['You can only share with connected family members.'],
+                'user_uuid' => ['You can only share with people who are in your contacts and on the app.'],
             ]);
         }
     }

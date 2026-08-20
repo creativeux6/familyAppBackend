@@ -9,9 +9,11 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('storage_plans', function (Blueprint $table) {
-            $table->string('billing_period', 16)->default('monthly')->after('currency');
-        });
+        if (! Schema::hasColumn('storage_plans', 'billing_period')) {
+            Schema::table('storage_plans', function (Blueprint $table) {
+                $table->string('billing_period', 16)->default('monthly')->after('currency');
+            });
+        }
 
         // Free plan renews yearly; all others monthly.
         DB::table('storage_plans')->where('slug', 'free')->update(['billing_period' => 'yearly']);
@@ -48,8 +50,10 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::table('storage_plans', function (Blueprint $table) {
-            $table->dropColumn('billing_period');
-        });
+        if (Schema::hasColumn('storage_plans', 'billing_period')) {
+            Schema::table('storage_plans', function (Blueprint $table) {
+                $table->dropColumn('billing_period');
+            });
+        }
     }
 };

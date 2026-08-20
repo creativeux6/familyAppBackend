@@ -29,6 +29,7 @@ Review gate document. Laravel migration files in `backend/database/migrations/` 
 | 19 | `2026_01_01_000080_create_graph_projection_state_table.php` | graph_projection_state |
 | 20 | `2026_01_01_000090_create_payment_tables.php` | payment_transactions |
 | 21 | `2026_01_01_000014_seed_relationship_edge_types.php` | seed edge types |
+| 22 | `2026_08_19_160000_create_user_contact_hashes_table.php` | user_contact_hashes |
 
 ## users
 

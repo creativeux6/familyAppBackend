@@ -153,3 +153,5 @@ Toggle anonymity mode.
 ## Status
 
 Implemented in `app/Modules/Connections/`. Swagger tags **Connections** and **Privacy**.
+
+Registered phone-book matches (chat/share without a family connection): [friends-api-contract.md](./friends-api-contract.md).

@@ -40,7 +40,7 @@ class DirectChatTest extends TestCase
             ->assertJsonPath('uuid', $groupUuid);
     }
 
-    public function test_direct_chat_requires_connection(): void
+    public function test_direct_chat_requires_connection_or_contact_match(): void
     {
         $alice = $this->actingAsUser($this->createUserWithFamily());
         $stranger = $this->createUserWithFamily();

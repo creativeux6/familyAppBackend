@@ -107,13 +107,18 @@ class AppServiceProvider extends ServiceProvider
             ];
         });
 
-        RateLimiter::for('api', function (Request $request) {
-            $key = $request->user()?->id
-                ? 'user:'.$request->user()->id
-                : 'ip:'.($request->ip() ?: 'unknown');
+        RateLimiter::for('friends-sync', function (Request $request) {
+            $ip = $request->ip() ?: 'unknown';
+            $userId = $request->user()?->id ?? 'guest';
 
-            return Limit::perMinute((int) config('security.api_per_minute', 120))
-                ->by($key);
+            return [
+                Limit::perMinute((int) config('security.friends_sync_per_minute_user', 10))
+                    ->by('friends-sync-user:'.$userId)
+                    ->response(fn () => $this->tooManyAttemptsResponse()),
+                Limit::perMinute((int) config('security.friends_sync_per_minute_ip', 20))
+                    ->by('friends-sync-ip:'.$ip)
+                    ->response(fn () => $this->tooManyAttemptsResponse()),
+            ];
         });
     }
 

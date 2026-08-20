@@ -32,9 +32,9 @@ class MediaOwnershipService
 
         $recipient = User::query()->where('uuid', $toUserUuid)->firstOrFail();
 
-        if (! $this->connectedMemberGuard->areConnected($owner, $recipient)) {
+        if (! $this->connectedMemberGuard->canChatOrShare($owner, $recipient)) {
             throw ValidationException::withMessages([
-                'to_user_uuid' => ['You can only transfer to connected family members.'],
+                'to_user_uuid' => ['You can only transfer to people who are in your contacts and on the app.'],
             ]);
         }
 
