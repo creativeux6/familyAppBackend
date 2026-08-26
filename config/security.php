@@ -22,4 +22,6 @@ return [
 
     'friends_sync_per_minute_user' => (int) env('FRIENDS_SYNC_PER_MINUTE_USER', 10),
     'friends_sync_per_minute_ip' => (int) env('FRIENDS_SYNC_PER_MINUTE_IP', 20),
+
+    'chat_messages_per_minute_user' => (int) env('CHAT_MESSAGES_PER_MINUTE_USER', 60),
 ];

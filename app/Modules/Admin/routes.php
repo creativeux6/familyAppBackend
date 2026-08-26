@@ -24,6 +24,7 @@ Route::middleware(['auth:sanctum', 'role:super_admin|admin'])->prefix('admin')->
     Route::post('/users/{uuid}/restore', [AdminUserController::class, 'restore']);
     Route::post('/users/{uuid}/roles', [AdminUserController::class, 'assignRole']);
     Route::delete('/users/{uuid}/roles/{role}', [AdminUserController::class, 'removeRole']);
+    Route::post('/users/{uuid}/access-usage/reset', [AdminUserController::class, 'resetAccessUsage']);
 
     Route::get('/audit-logs', [AdminAuditLogController::class, 'index']);
 

@@ -13,12 +13,14 @@ class MediaPermissionService
     public function __construct(
         private readonly MediaAccessService $accessService,
         private readonly MediaCoOwnerService $coOwnerService,
+        private readonly \App\Modules\StoragePlans\Services\StorageQuotaService $quotaService,
     ) {}
 
     public function grantToUser(User $owner, string $mediaUuid, string $targetUserUuid, string $access = 'view', bool $notify = true): array
     {
         $media = $this->accessService->requireMedia($mediaUuid);
         $this->accessService->assertCanShare($owner, $media);
+        $this->quotaService->assertCanShare($owner);
 
         if ($media->status !== 'active') {
             throw ValidationException::withMessages([
@@ -63,6 +65,7 @@ class MediaPermissionService
     {
         $media = $this->accessService->requireMedia($mediaUuid);
         $this->accessService->assertCanShare($owner, $media);
+        $this->quotaService->assertCanShare($owner);
         $this->accessService->assertCanGrantToGroup($owner, $groupUuid);
 
         if ($media->status !== 'active') {

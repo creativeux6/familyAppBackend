@@ -1,4 +1,4 @@
-# Family App — Overview
+# Tijori — Overview
 
 A mobile-first family networking platform. Members register with phone + password, complete a relative questionnaire, get matched to existing families, connect with relatives (or stay anonymous), build groups, chat, and share encrypted media.
 
@@ -35,11 +35,11 @@ A mobile-first family networking platform. Members register with phone + passwor
 | 04 | `04-family-tree/` | Tree API, kinship rules, [manage family info](./04-family-tree/family-info-api-contract.md) |
 | 05 | `05-groups-and-chat/` | Groups, direct chat, E2E chat — [API](./05-groups-and-chat/api-contract.md), [client flow](./05-groups-and-chat/client-flow.md) |
 | 06 | `06-media-and-s3/` | Encrypted media, permissions |
-| 07 | `07-storage-plans/` | Plans, quota |
+| 07 | `07-storage-plans/` | Plans, quota — **[product spec](../07-storage-plans/plans-usage-membership-and-payments.md)** |
 | 08 | `08-admin-dashboard/` | Admin API |
 | 09 | `09-realtime-websockets/` | Reverb channels |
 | 10 | `10-flutter-mobile/` | Mobile UX |
-| 11 | `11-deployment-and-ops/` | Docker, env, **[commands](./11-deployment-and-ops/commands.md)**, **[production deployment](./11-deployment-and-ops/production-deployment.md)** |
+| 11 | `11-deployment-and-ops/` | Docker, env, **[commands](./11-deployment-and-ops/commands.md)**, **[production commands](./11-deployment-and-ops/production-commands.md)**, **[production deployment](./11-deployment-and-ops/production-deployment.md)** |
 | 12 | `12-encryption-and-keys/` | E2E security — **[key continuity (never lose media/chat)](./12-encryption-and-keys/key-continuity.md)**, [API](./12-encryption-and-keys/api-contract.md) |
 | 13 | `13-neo4j-graph-sync/` | v2 graph projection |
 | 14 | `14-v2-adapters/` | v2 migration adapters |

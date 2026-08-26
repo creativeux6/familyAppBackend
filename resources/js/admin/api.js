@@ -1,5 +1,5 @@
-const TOKEN_KEY = 'familyapp_panel_token';
-const USER_KEY = 'familyapp_panel_user';
+const TOKEN_KEY = 'tijori_panel_token';
+const USER_KEY = 'tijori_panel_user';
 
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY);

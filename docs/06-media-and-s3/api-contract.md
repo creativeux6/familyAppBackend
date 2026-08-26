@@ -6,13 +6,13 @@ All media is **E2E encrypted on the client** before upload. The server stores **
 
 ## Storage quota
 
-Quota is the user's **assigned storage plan** (Free **5 GB** seeded on register). Usage is **combined**:
+Quota is the user's **assigned storage plan** (Free **5 GB stored** seeded on register). **Stored** and **monthly access** are separate:
 
-- `users.storage_used_bytes` — stored uploads (reclaimable on delete)
-- `users.storage_read_bytes` — cumulative reads/egress: full downloads, thumbnails, stream chunks (never reclaimed)
-- Plan check uses `used = stored + read` via `StorageQuotaService::usedBytes()`
+- Pool `user_storage_usage.storage_used_bytes` — stored uploads (reclaimable on delete); this is what the plan bar enforces (`users.storage_used_bytes` is the owner's contribution cache)
+- Pool `streamed_bytes + downloaded_bytes + file_viewed_bytes` — monthly access (cap = plan `monthly_access_limit_bytes`, snapshot on the open period); not shown in user quota API
+- `users.storage_read_bytes` — lifetime egress (admin analytics)
 
-At/over quota the API rejects gallery uploads/downloads and the app shows “Storage limit reached. Please subscribe to a paid plan.” Chat stays playable but still records read bytes. See [permanent-product-rules.md](../00-overview/permanent-product-rules.md).
+At/over **stored** quota the API rejects gallery uploads/downloads and the app shows “Storage limit reached…”. When monthly access is soft-gated (≤ 0.5 GB remaining), gallery open/download/stream of media **> 100 MB** returns “Too many requests. Please upgrade your subscription.” Chat stays playable unless `billing_status = media_locked`. See [permanent-product-rules.md](../00-overview/permanent-product-rules.md). Production object store: Backblaze B2 via `MEDIA_DISK=b2` + `B2_*`.
 
 ---
 
@@ -56,7 +56,7 @@ For large files, prefer **chunked upload** (5 MB parts by default):
 | DELETE | `/media/{uuid}/upload` | Abort pending upload |
 | POST | `/media/{uuid}/complete` | Finalize (assembles S3 multipart or local parts) |
 
-S3 object keys use prefix `famlyApp/media/{user_uuid}/{media_uuid}` (configurable via `MEDIA_KEY_PREFIX`).
+S3/B2 object keys use prefix `{MEDIA_KEY_PREFIX}/{user_uuid}/{media_uuid}` (default `tagori/media/...`). Never store at the bucket root.
 
 ## POST /media/{uuid}/complete
 

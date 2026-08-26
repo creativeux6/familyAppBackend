@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
-import { useAuth } from '../auth';
-import { DashboardShimmer } from '../shimmer';
+import { formatBytes, formatUsd } from '../components';
 
 function StatCard({ label, value }) {
   return (
@@ -57,10 +56,24 @@ export function AdminDashboardPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard label="Users total" value={stats?.users_total} />
         <StatCard label="New users (7d)" value={stats?.users_new_7d} />
+        <StatCard label="Active subscribers" value={stats?.active_subscribers} />
         <StatCard label="Families" value={stats?.families_total} />
         <StatCard label="Groups" value={stats?.groups_total} />
         <StatCard label="Active media files" value={stats?.media_files_active} />
         <StatCard label="Open abuse reports" value={stats?.abuse_reports_open} />
+        <StatCard label="Past due" value={stats?.assignments_past_due} />
+        <StatCard label="Media locked" value={stats?.assignments_media_locked} />
+      </div>
+
+      <h2 className="mb-3 mt-8 text-lg font-semibold text-slate-900">Storage and B2</h2>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <StatCard label="Total storage used" value={formatBytes(stats?.storage_used_bytes)} />
+        <StatCard label="Streamed this month" value={formatBytes(stats?.streamed_bytes)} />
+        <StatCard label="Downloaded this month" value={formatBytes(stats?.downloaded_bytes)} />
+        <StatCard label="Estimated B2 storage" value={formatUsd(stats?.estimated_b2_storage_usd)} />
+        <StatCard label="Estimated egress" value={formatUsd(stats?.estimated_b2_egress_usd)} />
+        <StatCard label="Estimated revenue" value={formatUsd(stats?.estimated_revenue_usd)} />
+        <StatCard label="Estimated gross margin" value={formatUsd(stats?.estimated_gross_margin_usd)} />
       </div>
     </div>
   );

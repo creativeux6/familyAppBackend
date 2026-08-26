@@ -7,7 +7,7 @@ export function AuthLayout({ title, subtitle, children }) {
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-600 text-white text-lg font-semibold shadow-lg shadow-indigo-200">
-            FA
+            TJ
           </div>
           <h1 className="mt-4 text-2xl font-semibold tracking-tight text-slate-900">{title}</h1>
           {subtitle ? <p className="mt-2 text-sm text-slate-500">{subtitle}</p> : null}
@@ -390,10 +390,10 @@ export function AppShell({ user, isAdmin, onLogout, children }) {
       >
         <div className="flex h-16 items-center gap-3 border-b border-white/10 px-5">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-300 text-sm font-bold text-indigo-950">
-            FA
+            TJ
           </div>
           <div>
-            <div className="text-sm font-semibold text-white">Family App</div>
+            <div className="text-sm font-semibold text-white">Tijori</div>
             <div className="text-xs text-indigo-200/70">
               {isAdmin ? 'Admin console' : 'Web home'}
             </div>
@@ -438,7 +438,7 @@ export function AppShell({ user, isAdmin, onLogout, children }) {
 
         <footer className="border-t border-slate-200 bg-white px-4 py-4 sm:px-6">
           <div className="flex flex-col gap-2 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-            <span>© {new Date().getFullYear()} Family App</span>
+            <span>© {new Date().getFullYear()} Tijori</span>
             <span className="flex flex-wrap gap-3">
               <Link to="/web" className="hover:text-indigo-600">
                 Home

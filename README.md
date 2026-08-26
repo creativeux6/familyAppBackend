@@ -1,4 +1,4 @@
-# Family App API
+# Tijori API
 
 Laravel 13 backend — installed via Composer (official installer).
 
@@ -41,4 +41,5 @@ After API changes: `composer swagger`
 
 - Module specs: [`../docs/`](../docs/)
 - Production deployment: [`../docs/11-deployment-and-ops/production-deployment.md`](../docs/11-deployment-and-ops/production-deployment.md)
+- Production commands checklist: [`../docs/11-deployment-and-ops/production-commands.md`](../docs/11-deployment-and-ops/production-commands.md)
 - Chat client flow: [`../docs/05-groups-and-chat/client-flow.md`](../docs/05-groups-and-chat/client-flow.md)

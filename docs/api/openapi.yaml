@@ -1,7 +1,7 @@
 openapi: 3.0.0
 info:
-  title: 'Family App API'
-  description: 'Family networking platform API — phone auth, family graph, encrypted chat & media. Modules are grouped by tag in Swagger UI.'
+  title: 'Tijori API'
+  description: 'Tijori family networking platform API — phone auth, family graph, encrypted chat & media. Modules are grouped by tag in Swagger UI.'
   version: 1.0.0
 servers:
   - url: /api/v1

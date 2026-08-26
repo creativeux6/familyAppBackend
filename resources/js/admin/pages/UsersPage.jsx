@@ -2,10 +2,27 @@ import { useEffect, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { api } from '../api';
 import { useAuth } from '../auth';
-import { formatBytes, PaginationBar } from '../components';
+import { formatBytes, formatPriceCents, formatUsd, PaginationBar } from '../components';
 import { Shimmer } from '../shimmer';
 
-const PER_PAGE = 20;
+function UsageBar({ used, limit, label }) {
+  const u = Number(used) || 0;
+  const l = Number(limit) || 0;
+  const pct = l > 0 ? Math.min(100, Math.round((u / l) * 100)) : 0;
+  return (
+    <div>
+      <div className="mb-1 flex justify-between text-xs text-slate-500">
+        <span>{label}</span>
+        <span>
+          {formatBytes(u)} / {l ? formatBytes(l) : '—'} ({pct}%)
+        </span>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+        <div className="h-full rounded-full bg-indigo-500" style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
 
 function formatDate(value) {
   if (!value) return '—';
@@ -162,6 +179,23 @@ export function UsersPage() {
     }
   }
 
+  async function resetAccessUsage() {
+    if (!selected?.user?.uuid) return;
+    setBusyUuid(selected.user.uuid);
+    setError('');
+    try {
+      const detail = await api(`/admin/users/${selected.user.uuid}/access-usage/reset`, {
+        method: 'POST',
+      });
+      setSelected(detail);
+      await refreshList();
+    } catch (err) {
+      setError(err.message || 'Could not reset access usage');
+    } finally {
+      setBusyUuid('');
+    }
+  }
+
   const management = selected?.management;
   const storage = selected?.storage;
   const plan =
@@ -239,6 +273,7 @@ export function UsersPage() {
                 <th className="px-4 py-3">Plan</th>
                 <th className="px-4 py-3">Quota</th>
                 <th className="px-4 py-3">Usage</th>
+                <th className="px-4 py-3">Access</th>
                 <th className="px-4 py-3">Next bill</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Actions</th>
@@ -248,14 +283,14 @@ export function UsersPage() {
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i} className="border-t border-slate-100">
-                    <td colSpan={7} className="px-4 py-3">
+                    <td colSpan={8} className="px-4 py-3">
                       <Shimmer className="h-4 w-full" />
                     </td>
                   </tr>
                 ))
               ) : users.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-slate-500">
+                    <td colSpan={8} className="px-4 py-8 text-slate-500">
                     No users found.
                   </td>
                 </tr>
@@ -289,6 +324,12 @@ export function UsersPage() {
                           <span className="text-slate-400"> / {formatBytes(user.quota_bytes)}</span>
                         ) : null}
                       </td>
+                      <td className="px-4 py-3 text-slate-600">
+                        {formatBytes(user.access_used_bytes ?? user.storage_read_period_bytes)}
+                        {user.access_quota_bytes != null ? (
+                          <span className="text-slate-400"> / {formatBytes(user.access_quota_bytes)}</span>
+                        ) : null}
+                      </td>
                       <td className="whitespace-nowrap px-4 py-3 text-slate-600">
                         {formatDate(user.renewal_date)}
                       </td>
@@ -300,7 +341,11 @@ export function UsersPage() {
                               : 'border-emerald-200 bg-emerald-50 text-emerald-700'
                           }`}
                         >
-                          {banned ? 'Banned' : 'Active'}
+                          {banned ? 'Banned' : user.billing_status === 'media_locked'
+                            ? 'Media locked'
+                            : user.billing_status === 'past_due'
+                              ? 'Past due'
+                              : 'Active'}
                         </span>
                       </td>
                       <td className="px-4 py-3">
@@ -357,7 +402,7 @@ export function UsersPage() {
           role="presentation"
         >
           <div
-            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5 shadow-xl"
+            className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-5 shadow-xl"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
@@ -410,19 +455,85 @@ export function UsersPage() {
                 <dt className="text-slate-500">Plan</dt>
                 <dd className="text-right font-medium text-slate-800">
                   {plan?.name || '—'}
-                  {plan?.billing_period_label ? (
+                  {plan?.display_price_cents != null ? (
                     <div className="text-xs font-normal text-slate-500">
-                      {plan.billing_period_label} billing
+                      {formatPriceCents(plan.display_price_cents, plan.currency)}
                     </div>
                   ) : null}
                 </dd>
               </div>
               <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
-                <dt className="text-slate-500">Quota</dt>
+                <dt className="text-slate-500">Billing status</dt>
                 <dd className="font-medium text-slate-800">
-                  {formatBytes(storage?.quota_bytes ?? plan?.quota_bytes)}
+                  {storage?.billing_status || selected?.plan_assignment?.billing_status || 'active'}
                 </dd>
               </div>
+              {storage?.is_pool_owner === false ? (
+                <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
+                  <dt className="text-slate-500">Pool owner</dt>
+                  <dd className="font-medium text-slate-800">{storage?.pool_owner_name || '—'}</dd>
+                </div>
+              ) : null}
+              <div className="space-y-3 border-b border-slate-100 py-3">
+                <UsageBar
+                  label="Storage"
+                  used={storage?.stored_bytes ?? storage?.used_bytes}
+                  limit={storage?.quota_bytes}
+                />
+                <UsageBar
+                  label="Monthly access"
+                  used={storage?.access_used_bytes}
+                  limit={storage?.access_quota_bytes}
+                />
+              </div>
+              <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
+                <dt className="text-slate-500">Streaming</dt>
+                <dd className="font-medium text-slate-800">{formatBytes(storage?.streamed_bytes)}</dd>
+              </div>
+              <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
+                <dt className="text-slate-500">Downloads</dt>
+                <dd className="font-medium text-slate-800">{formatBytes(storage?.downloaded_bytes)}</dd>
+              </div>
+              <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
+                <dt className="text-slate-500">File views</dt>
+                <dd className="font-medium text-slate-800">{formatBytes(storage?.file_viewed_bytes)}</dd>
+              </div>
+              <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
+                <dt className="text-slate-500">Estimated cost</dt>
+                <dd className="font-medium text-slate-800">{formatUsd(storage?.estimated_cost_usd)}</dd>
+              </div>
+              <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
+                <dt className="text-slate-500">Revenue</dt>
+                <dd className="font-medium text-slate-800">{formatUsd(storage?.revenue_usd)}</dd>
+              </div>
+              <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
+                <dt className="text-slate-500">Net contribution</dt>
+                <dd className="font-medium text-slate-800">{formatUsd(storage?.net_contribution_usd)}</dd>
+              </div>
+              <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
+                <dt className="text-slate-500">Owned bytes (this user)</dt>
+                <dd className="font-medium text-slate-800">{formatBytes(storage?.owned_bytes)}</dd>
+              </div>
+              <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
+                <dt className="text-slate-500">Seats</dt>
+                <dd className="text-right font-medium text-slate-800">
+                  {storage?.membership?.member_count ?? 0} members ·{' '}
+                  {storage?.membership?.empty_seats ?? 0} empty
+                  {(storage?.membership?.members || []).length ? (
+                    <div className="mt-1 text-xs font-normal text-slate-500">
+                      {(storage.membership.members || [])
+                        .map((m) => `${m.display_name || m.user_uuid} (${m.role})`)
+                        .join(', ')}
+                    </div>
+                  ) : null}
+                </dd>
+              </div>
+              {storage?.pending_plan ? (
+                <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
+                  <dt className="text-slate-500">Pending downgrade</dt>
+                  <dd className="font-medium text-slate-800">{storage.pending_plan.name}</dd>
+                </div>
+              ) : null}
               <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
                 <dt className="text-slate-500">Plan cycle start</dt>
                 <dd className="font-medium text-slate-800">{formatDateTime(cycleStart)}</dd>
@@ -431,30 +542,40 @@ export function UsersPage() {
                 <dt className="text-slate-500">Next bill / cycle end</dt>
                 <dd className="font-medium text-slate-800">{formatDateTime(cycleEnd)}</dd>
               </div>
-              <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
-                <dt className="text-slate-500">Total usage</dt>
-                <dd className="font-medium text-slate-800">
-                  {formatBytes(storage?.used_bytes)} of {formatBytes(storage?.quota_bytes)}
-                </dd>
-              </div>
-              <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
-                <dt className="text-slate-500">Stored</dt>
-                <dd className="font-medium text-slate-800">
-                  {formatBytes(storage?.stored_bytes)}
-                </dd>
-              </div>
               <div className="flex justify-between gap-4 pb-1">
-                <dt className="text-slate-500">Read (egress)</dt>
+                <dt className="text-slate-500">Lifetime egress</dt>
                 <dd className="font-medium text-slate-800">
-                  {formatBytes(storage?.read_bytes)}
+                  {formatBytes(storage?.lifetime_read_bytes ?? storage?.read_bytes)}
                 </dd>
               </div>
             </dl>
 
+            {(storage?.past_periods || []).length ? (
+              <div className="mt-3 text-xs text-slate-500">
+                Past periods:{' '}
+                {storage.past_periods
+                  .map(
+                    (p) =>
+                      `${formatDate(p.period_start)} · stored ${formatBytes(p.storage_used_bytes)} · access ${formatBytes(p.monthly_access_bytes)}`,
+                  )
+                  .join(' | ')}
+              </div>
+            ) : null}
+
             <p className="mt-3 text-xs text-slate-500">
-              Quota follows the assigned plan. Billing advances the price cycle only — it does not
-              reset stored or read usage.
+              Storage quota is stored bytes on the pool. Monthly access meters reset each cycle.
+              Stream/download/view costs are admin-only. Billing advances price only — stored usage
+              is not reset.
             </p>
+
+            <button
+              type="button"
+              disabled={busyUuid === selected.user?.uuid}
+              onClick={resetAccessUsage}
+              className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+            >
+              Reset monthly access usage
+            </button>
 
             <div className="mt-4 border-t border-slate-100 pt-4">
               <label className="block text-xs text-slate-500">

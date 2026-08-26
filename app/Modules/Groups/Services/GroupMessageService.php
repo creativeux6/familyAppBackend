@@ -10,7 +10,9 @@ use App\Modules\Groups\Events\GroupReadUpdated;
 use App\Modules\Groups\Events\MessageDeleted;
 use App\Modules\Groups\Events\MessageSent;
 use App\Modules\Groups\Events\MessageUpdated;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -64,8 +66,22 @@ class GroupMessageService
         int $encryptionVersion = 1,
         string $type = 'text',
         ?string $mediaFileUuid = null,
+        ?string $clientMessageId = null,
     ): array {
         $group = $this->groupService->requireGroupMember($user, $groupUuid);
+
+        if ($clientMessageId) {
+            $existing = Message::query()
+                ->where('group_uuid', $group->uuid)
+                ->where('sender_user_id', $user->id)
+                ->where('client_message_id', $clientMessageId)
+                ->with('sender:id,uuid,display_name')
+                ->first();
+
+            if ($existing) {
+                return $this->formatMessage($existing);
+            }
+        }
 
         $generationExists = GroupEncryptionGeneration::query()
             ->where('group_uuid', $group->uuid)
@@ -87,23 +103,89 @@ class GroupMessageService
             ]);
         }
 
-        $message = Message::create([
-            'uuid' => (string) Str::uuid(),
-            'group_uuid' => $group->uuid,
-            'sender_user_id' => $user->id,
-            'encryption_generation' => $encryptionGeneration,
-            'ciphertext' => $ciphertext,
-            'nonce' => $nonce,
-            'encryption_version' => $encryptionVersion,
-            'type' => $type,
-            'media_file_uuid' => $mediaFileUuid,
-        ]);
+        try {
+            $message = $this->createMessageWithRetry([
+                'uuid' => (string) Str::uuid(),
+                'client_message_id' => $clientMessageId,
+                'group_uuid' => $group->uuid,
+                'sender_user_id' => $user->id,
+                'encryption_generation' => $encryptionGeneration,
+                'ciphertext' => $ciphertext,
+                'nonce' => $nonce,
+                'encryption_version' => $encryptionVersion,
+                'type' => $type,
+                'media_file_uuid' => $mediaFileUuid,
+            ]);
+        } catch (QueryException $e) {
+            if ($clientMessageId && $this->isUniqueConstraintViolation($e)) {
+                $existing = Message::query()
+                    ->where('group_uuid', $group->uuid)
+                    ->where('sender_user_id', $user->id)
+                    ->where('client_message_id', $clientMessageId)
+                    ->with('sender:id,uuid,display_name')
+                    ->first();
+
+                if ($existing) {
+                    return $this->formatMessage($existing);
+                }
+            }
+
+            throw $e;
+        }
 
         $message->load('sender:id,uuid,display_name');
 
-        broadcast(new MessageSent($message));
+        try {
+            broadcast(new MessageSent($message));
+        } catch (\Throwable $e) {
+            Log::warning('Message broadcast failed after durable write', [
+                'message_uuid' => $message->uuid,
+                'group_uuid' => $message->group_uuid,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         return $this->formatMessage($message);
+    }
+
+    /** @param array<string, mixed> $attributes */
+    private function createMessageWithRetry(array $attributes, int $attempts = 3): Message
+    {
+        $lastException = null;
+
+        for ($i = 0; $i < $attempts; $i++) {
+            try {
+                return Message::create($attributes);
+            } catch (QueryException $e) {
+                $lastException = $e;
+                if (! $this->isRetryableLockException($e) || $i === $attempts - 1) {
+                    throw $e;
+                }
+                usleep(50_000 * ($i + 1));
+            }
+        }
+
+        throw $lastException ?? new \RuntimeException('Failed to create message.');
+    }
+
+    private function isUniqueConstraintViolation(QueryException $e): bool
+    {
+        $code = (string) ($e->errorInfo[1] ?? '');
+        $message = strtolower($e->getMessage());
+
+        return $code === '1062'
+            || str_contains($message, 'unique')
+            || str_contains($message, 'duplicate');
+    }
+
+    private function isRetryableLockException(QueryException $e): bool
+    {
+        $code = (string) ($e->errorInfo[1] ?? '');
+        $message = strtolower($e->getMessage());
+
+        return in_array($code, ['1205', '1213'], true)
+            || str_contains($message, 'deadlock')
+            || str_contains($message, 'lock wait timeout');
     }
 
     public function markRead(User $user, string $groupUuid, ?string $messageUuid = null): array

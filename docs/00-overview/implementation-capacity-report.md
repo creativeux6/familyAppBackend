@@ -1,4 +1,4 @@
-# Family App — Implementation & Capacity Report
+# Tijori — Implementation & Capacity Report
 
 **Date:** July 2026  
 **Scope:** v1 stack (Laravel 13 / Flutter / MySQL / Reverb / S3)  

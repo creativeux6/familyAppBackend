@@ -18,6 +18,7 @@ class Message extends Model
 
     protected $fillable = [
         'uuid',
+        'client_message_id',
         'group_uuid',
         'sender_user_id',
         'encryption_generation',

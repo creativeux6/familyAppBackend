@@ -9,6 +9,7 @@ use App\Models\MediaPermission;
 use App\Models\User;
 use App\Modules\Groups\Services\ConnectedMemberGuard;
 use App\Modules\Groups\Services\GroupService;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\ValidationException;
 
 class MediaAccessService
@@ -24,6 +25,16 @@ class MediaAccessService
     }
 
     public function canView(User $user, MediaFile $media): bool
+    {
+        $ttl = max(5, (int) config('media.acl_cache_seconds', 45));
+        $cacheKey = "media:can_view:{$user->id}:{$media->uuid}";
+
+        return (bool) Cache::remember($cacheKey, $ttl, function () use ($user, $media) {
+            return $this->computeCanView($user, $media);
+        });
+    }
+
+    private function computeCanView(User $user, MediaFile $media): bool
     {
         if ($this->isRemovedForUser($user, $media)) {
             return false;
@@ -54,6 +65,11 @@ class MediaAccessService
             ->where('media_file_uuid', $media->uuid)
             ->whereIn('group_uuid', $groupUuids)
             ->exists();
+    }
+
+    public function forgetViewCache(User $user, string $mediaUuid): void
+    {
+        Cache::forget("media:can_view:{$user->id}:{$mediaUuid}");
     }
 
     public function isCoOwner(User $user, MediaFile $media): bool

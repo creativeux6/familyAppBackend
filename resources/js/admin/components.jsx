@@ -8,6 +8,19 @@ export function formatBytes(bytes) {
   return `${value} B`;
 }
 
+export function formatUsd(value) {
+  const amount = Number(value) || 0;
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    return `$${amount.toFixed(2)}`;
+  }
+}
+
 export function formatPriceCents(cents, currency = 'USD') {
   const amount = (Number(cents) || 0) / 100;
   try {

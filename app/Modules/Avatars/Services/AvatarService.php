@@ -307,7 +307,10 @@ class AvatarService
             $ext = 'jpg';
         }
 
-        $prefix = rtrim((string) config('avatars.key_prefix'), '/');
+        $prefix = trim((string) config('avatars.key_prefix', 'tagori/avatars'), '/');
+        if ($prefix === '') {
+            $prefix = 'tagori/avatars';
+        }
 
         return $prefix.'/'.$scope.'/'.$uuid.'/'.$variant.'-'.Str::lower(Str::random(8)).'.'.$ext;
     }

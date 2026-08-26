@@ -5,7 +5,7 @@ return [
     'documentations' => [
         'default' => [
             'api' => [
-                'title' => 'Family App API',
+                'title' => 'Tijori API',
             ],
 
             'routes' => [

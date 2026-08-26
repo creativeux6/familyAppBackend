@@ -6,6 +6,7 @@ use App\Models\MediaFile;
 use App\Models\User;
 use Aws\S3\S3Client;
 use Illuminate\Contracts\Filesystem\Filesystem;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
@@ -39,58 +40,128 @@ class MediaChunkedUploadService
             ]);
         }
 
-        $media = $this->accessService->requireMedia($uuid);
-        $this->accessService->assertOwner($user, $media);
-
-        if ($media->status !== 'pending_upload') {
-            throw ValidationException::withMessages([
-                'media' => ['Upload already completed or file is not pending.'],
-            ]);
-        }
-
-        $chunkSize = (int) ($media->chunk_size ?: $this->chunkSize());
+        $chunkSize = null;
         $bodySize = strlen($binary);
-
-        if ($bodySize < 1 || $bodySize > $chunkSize) {
-            throw ValidationException::withMessages([
-                'chunk' => ["Chunk size must be between 1 and {$chunkSize} bytes."],
-            ]);
-        }
-
         $diskName = (string) config('media.disk');
-        $parts = collect($media->uploaded_parts ?? []);
 
-        if ($parts->contains(fn (array $part) => (int) ($part['part_number'] ?? 0) === $partNumber)) {
+        // Validate ownership/status and claim the part slot under a row lock so
+        // concurrent chunk uploads cannot clobber uploaded_parts JSON.
+        $media = DB::transaction(function () use ($user, $uuid, $partNumber, $bodySize, &$chunkSize) {
+            $media = MediaFile::query()->where('uuid', $uuid)->lockForUpdate()->first();
+            if (! $media) {
+                $media = $this->accessService->requireMedia($uuid);
+            }
+            $this->accessService->assertOwner($user, $media);
+
+            if ($media->status !== 'pending_upload') {
+                throw ValidationException::withMessages([
+                    'media' => ['Upload already completed or file is not pending.'],
+                ]);
+            }
+
+            $chunkSize = (int) ($media->chunk_size ?: $this->chunkSize());
+
+            if ($bodySize < 1 || $bodySize > $chunkSize) {
+                throw ValidationException::withMessages([
+                    'chunk' => ["Chunk size must be between 1 and {$chunkSize} bytes."],
+                ]);
+            }
+
+            $parts = collect($media->uploaded_parts ?? []);
+            if ($parts->contains(fn (array $part) => (int) ($part['part_number'] ?? 0) === $partNumber)) {
+                return $media;
+            }
+
+            // Reserve the part number before uploading bytes so races serialize.
+            $parts->push([
+                'part_number' => $partNumber,
+                'size_bytes' => $bodySize,
+                'pending' => true,
+            ]);
+            $media->update([
+                'uploaded_parts' => $parts->sortBy('part_number')->values()->all(),
+                'chunk_size' => $chunkSize,
+            ]);
+
+            return $media->fresh();
+        });
+
+        $parts = collect($media->uploaded_parts ?? []);
+        $existing = $parts->first(
+            fn (array $part) => (int) ($part['part_number'] ?? 0) === $partNumber
+        );
+
+        if (is_array($existing) && empty($existing['pending'])) {
             return array_merge(
                 ['message' => 'Chunk already uploaded.', 'uuid' => $media->uuid],
-                $this->formatUploadStatus($media->fresh())
+                $this->formatUploadStatus($media)
             );
         }
 
-        if ($diskName === 's3' && filled(config('filesystems.disks.s3.bucket'))) {
-            $etag = $this->uploadS3Part($media, $partNumber, $binary);
-            $parts->push([
-                'part_number' => $partNumber,
-                'etag' => $etag,
-                'size_bytes' => $bodySize,
-            ]);
-        } else {
-            $this->uploadLocalPart($media, $partNumber, $binary);
-            $parts->push([
-                'part_number' => $partNumber,
-                'size_bytes' => $bodySize,
-            ]);
+        try {
+            if ($this->usesObjectStoreMultipart($diskName)) {
+                $etag = $this->uploadS3Part($media, $partNumber, $binary);
+                $this->finalizePartMetadata($media->uuid, $partNumber, $bodySize, $etag);
+            } else {
+                $this->uploadLocalPart($media, $partNumber, $binary);
+                $this->finalizePartMetadata($media->uuid, $partNumber, $bodySize);
+            }
+        } catch (\Throwable $e) {
+            $this->releasePendingPart($media->uuid, $partNumber);
+            throw $e;
         }
-
-        $media->update([
-            'uploaded_parts' => $parts->sortBy('part_number')->values()->all(),
-            'chunk_size' => $chunkSize,
-        ]);
 
         return array_merge(
             ['message' => 'Chunk uploaded.', 'uuid' => $media->uuid],
             $this->formatUploadStatus($media->fresh())
         );
+    }
+
+    private function finalizePartMetadata(
+        string $uuid,
+        int $partNumber,
+        int $bodySize,
+        ?string $etag = null,
+    ): void {
+        DB::transaction(function () use ($uuid, $partNumber, $bodySize, $etag) {
+            $media = MediaFile::query()->where('uuid', $uuid)->lockForUpdate()->firstOrFail();
+            $parts = collect($media->uploaded_parts ?? [])
+                ->reject(fn (array $part) => (int) ($part['part_number'] ?? 0) === $partNumber)
+                ->values();
+
+            $entry = [
+                'part_number' => $partNumber,
+                'size_bytes' => $bodySize,
+            ];
+            if ($etag !== null) {
+                $entry['etag'] = $etag;
+            }
+            $parts->push($entry);
+
+            $media->update([
+                'uploaded_parts' => $parts->sortBy('part_number')->values()->all(),
+            ]);
+        });
+    }
+
+    private function releasePendingPart(string $uuid, int $partNumber): void
+    {
+        DB::transaction(function () use ($uuid, $partNumber) {
+            $media = MediaFile::query()->where('uuid', $uuid)->lockForUpdate()->first();
+            if (! $media) {
+                return;
+            }
+
+            $parts = collect($media->uploaded_parts ?? [])
+                ->reject(function (array $part) use ($partNumber) {
+                    return (int) ($part['part_number'] ?? 0) === $partNumber
+                        && ! empty($part['pending']);
+                })
+                ->values()
+                ->all();
+
+            $media->update(['uploaded_parts' => $parts]);
+        });
     }
 
     /** @return array<string, mixed> */
@@ -99,7 +170,7 @@ class MediaChunkedUploadService
         $media = $this->accessService->requireMedia($uuid);
         $this->accessService->assertOwner($user, $media);
 
-        if ($media->status !== 'pending_upload') {
+        if ($media->status !== 'pending_upload' && $media->status !== 'finalizing') {
             throw ValidationException::withMessages([
                 'media' => ['Only pending uploads can be aborted.'],
             ]);
@@ -119,7 +190,10 @@ class MediaChunkedUploadService
 
     public function finalizeChunkedUpload(MediaFile $media, Filesystem $disk): int
     {
-        $parts = collect($media->uploaded_parts ?? [])->sortBy('part_number')->values();
+        $parts = collect($media->uploaded_parts ?? [])
+            ->reject(fn (array $part) => ! empty($part['pending']))
+            ->sortBy('part_number')
+            ->values();
 
         if ($parts->isEmpty()) {
             throw ValidationException::withMessages([
@@ -138,7 +212,7 @@ class MediaChunkedUploadService
 
         $diskName = (string) config('media.disk');
 
-        if ($diskName === 's3' && filled($media->multipart_upload_id)) {
+        if ($this->usesObjectStoreMultipart($diskName) && filled($media->multipart_upload_id)) {
             $this->completeS3Multipart($media, $parts->all());
         } else {
             $this->assembleLocalParts($media, $disk, $parts->count());
@@ -156,12 +230,15 @@ class MediaChunkedUploadService
         $totalBytes = (int) $media->size_bytes;
         $totalParts = max(1, (int) ceil($totalBytes / $chunkSize));
         $uploadedParts = collect($media->uploaded_parts ?? [])
+            ->reject(fn (array $part) => ! empty($part['pending']))
             ->pluck('part_number')
             ->map(fn ($value) => (int) $value)
             ->sort()
             ->values()
             ->all();
-        $uploadedBytes = (int) collect($media->uploaded_parts ?? [])->sum('size_bytes');
+        $uploadedBytes = (int) collect($media->uploaded_parts ?? [])
+            ->reject(fn (array $part) => ! empty($part['pending']))
+            ->sum('size_bytes');
 
         return [
             'uuid' => $media->uuid,
@@ -182,10 +259,10 @@ class MediaChunkedUploadService
     {
         $diskName = (string) config('media.disk');
 
-        if ($diskName === 's3' && filled($media->multipart_upload_id)) {
+        if ($this->usesObjectStoreMultipart($diskName) && filled($media->multipart_upload_id)) {
             try {
                 $this->s3Client()->abortMultipartUpload([
-                    'Bucket' => (string) config('filesystems.disks.s3.bucket'),
+                    'Bucket' => $this->objectStoreBucket($diskName),
                     'Key' => $media->s3_key,
                     'UploadId' => $media->multipart_upload_id,
                 ]);
@@ -199,9 +276,11 @@ class MediaChunkedUploadService
 
     private function uploadS3Part(MediaFile $media, int $partNumber, string $binary): string
     {
+        $bucket = $this->objectStoreBucket();
+
         if (! filled($media->multipart_upload_id)) {
             $result = $this->s3Client()->createMultipartUpload([
-                'Bucket' => (string) config('filesystems.disks.s3.bucket'),
+                'Bucket' => $bucket,
                 'Key' => $media->s3_key,
                 'ContentType' => 'application/octet-stream',
             ]);
@@ -211,7 +290,7 @@ class MediaChunkedUploadService
         }
 
         $result = $this->s3Client()->uploadPart([
-            'Bucket' => (string) config('filesystems.disks.s3.bucket'),
+            'Bucket' => $bucket,
             'Key' => $media->s3_key,
             'UploadId' => (string) $media->multipart_upload_id,
             'PartNumber' => $partNumber,
@@ -232,21 +311,35 @@ class MediaChunkedUploadService
     /** @param array<int, array<string, mixed>> $parts */
     private function completeS3Multipart(MediaFile $media, array $parts): void
     {
-        $this->s3Client()->completeMultipartUpload([
-            'Bucket' => (string) config('filesystems.disks.s3.bucket'),
-            'Key' => $media->s3_key,
-            'UploadId' => (string) $media->multipart_upload_id,
-            'MultipartUpload' => [
-                'Parts' => collect($parts)
-                    ->sortBy('part_number')
-                    ->map(fn (array $part) => [
-                        'ETag' => $part['etag'],
-                        'PartNumber' => (int) $part['part_number'],
-                    ])
-                    ->values()
-                    ->all(),
-            ],
-        ]);
+        try {
+            $this->s3Client()->completeMultipartUpload([
+                'Bucket' => $this->objectStoreBucket(),
+                'Key' => $media->s3_key,
+                'UploadId' => (string) $media->multipart_upload_id,
+                'MultipartUpload' => [
+                    'Parts' => collect($parts)
+                        ->sortBy('part_number')
+                        ->map(fn (array $part) => [
+                            'ETag' => $part['etag'],
+                            'PartNumber' => (int) $part['part_number'],
+                        ])
+                        ->values()
+                        ->all(),
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            // Idempotent retry: multipart may already be completed.
+            $disk = Storage::disk((string) config('media.disk'));
+            try {
+                if ($disk->exists($media->s3_key)) {
+                    return;
+                }
+            } catch (\Throwable) {
+                // fall through
+            }
+
+            throw $e;
+        }
     }
 
     private function assembleLocalParts(MediaFile $media, Filesystem $disk, int $partCount): void
@@ -299,17 +392,41 @@ class MediaChunkedUploadService
         return $media->s3_key.'.parts/'.$partNumber;
     }
 
+    private function usesObjectStoreMultipart(?string $diskName = null): bool
+    {
+        $diskName ??= (string) config('media.disk');
+
+        return in_array($diskName, ['s3', 'b2'], true)
+            && filled(config("filesystems.disks.{$diskName}.bucket"));
+    }
+
+    private function objectStoreBucket(?string $diskName = null): string
+    {
+        $diskName ??= (string) config('media.disk');
+
+        return (string) config("filesystems.disks.{$diskName}.bucket");
+    }
+
     private function s3Client(): S3Client
     {
-        $config = config('filesystems.disks.s3');
+        $diskName = (string) config('media.disk', 'b2');
+        $config = config('filesystems.disks.'.$diskName) ?? config('filesystems.disks.b2');
 
-        return new S3Client([
+        $clientConfig = [
             'version' => 'latest',
-            'region' => $config['region'],
+            'region' => $config['region'] ?? 'us-west-002',
             'credentials' => [
-                'key' => $config['key'],
-                'secret' => $config['secret'],
+                'key' => $config['key'] ?? '',
+                'secret' => $config['secret'] ?? '',
             ],
-        ]);
+        ];
+
+        if (! empty($config['endpoint'])) {
+            $clientConfig['endpoint'] = $config['endpoint'];
+        }
+
+        $clientConfig['use_path_style_endpoint'] = (bool) ($config['use_path_style_endpoint'] ?? true);
+
+        return new S3Client($clientConfig);
     }
 }

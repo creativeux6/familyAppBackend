@@ -3,18 +3,22 @@
 namespace App\Console\Commands;
 
 use App\Modules\StoragePlans\Services\PlanAssignmentService;
+use App\Modules\StoragePlans\Services\PlanBillingService;
 use Illuminate\Console\Command;
 
 class RenewStoragePlansCommand extends Command
 {
     protected $signature = 'storage:renew-plans';
 
-    protected $description = 'Advance due storage plan billing dates (ends_at). Does not reset quota or usage.';
+    protected $description = 'Advance due storage plan billing dates, roll usage periods, and retry failed payments.';
 
-    public function handle(PlanAssignmentService $assignments): int
+    public function handle(PlanAssignmentService $assignments, PlanBillingService $billing): int
     {
-        $count = $assignments->renewDueAssignments();
-        $this->info("Renewed {$count} storage plan assignment(s).");
+        $renewed = $assignments->renewDueAssignments();
+        $this->info("Renewed {$renewed} storage plan assignment(s).");
+
+        $retried = $billing->retryPastDueDue();
+        $this->info("Processed {$retried} past-due payment retry(s).");
 
         return self::SUCCESS;
     }

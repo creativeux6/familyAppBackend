@@ -1,4 +1,4 @@
-# Stitch design prompt — Family App (Flutter)
+# Stitch design prompt — Tijori (Flutter)
 
 **How to use:** Paste sections into [Google Stitch](https://stitch.withgoogle.com/) as one master prompt, or send **one flow at a time** (Auth → Onboarding → Shell → Chat → Media → etc.) if Stitch works better with smaller scopes. Ask Stitch for **mobile Flutter / Material 3**, **iPhone 15 / Pixel-size frames**, light mode first.
 
@@ -9,7 +9,7 @@ Copy from “MASTER PROMPT” below through the end of the page list.
 ## MASTER PROMPT (paste into Stitch)
 
 ```
-Design a complete mobile UI for “Family App” — a private family networking Flutter app.
+Design a complete mobile UI for “Tijori” — a private family networking Flutter app.
 
 PRODUCT IN ONE LINE
 Families discover relatives, connect privately, chat end-to-end encrypted, share encrypted photos/videos, and browse a family tree — all phone + password based (no social login).
@@ -29,7 +29,7 @@ PLATFORM
 VISUAL DIRECTION (IMPORTANT — avoid AI UI clichés)
 - Do NOT use: purple-to-indigo gradients, glow neon, cream+#terracotta newspaper layouts, dark-mode-first, emoji-heavy UI, pill-stat strips, floating promo badges on heroes
 - DO use: one calm family brand color (deep teal-green or soft indigo as primary — pick ONE and stay consistent), warm off-white surfaces with subtle texture or soft radial wash (not flat pure white everywhere), clear hierarchy, generous whitespace
-- Brand name “Family App” must feel present on auth and home (hero-level on login/register; not only tiny nav text)
+- Brand name “Tijori” must feel present on auth and home (hero-level on login/register; not only tiny nav text)
 - Typography: expressive but readable — distinctive display for titles, clean body (not Inter/Roboto/Arial defaults if Stitch allows alternatives)
 - Cards: use only when they wrap a real interaction (list rows, selectable options). Avoid decorative card grids
 - Imagery: authentic family / kinship atmosphere only where it helps (auth splash, empty states) — never stock collage clutter
@@ -69,7 +69,7 @@ Reuse components consistently: AppHeader (branded bar + avatar), bottom Navigati
 A1. LOGIN (`/login`)
 Purpose: Sign in.
 Content:
-- Brand mark + “Family App” as hero signal
+- Brand mark + “Tijori” as hero signal
 - Headline: “Welcome back”
 - Subtitle: “Sign in with your phone number and password.”
 - Phone field (country code + number) — may be empty or prefilled with last used phone; NEVER hardcode a demo number in design
@@ -82,7 +82,7 @@ States: default, loading (button spinner / overlay), error
 A2. REGISTER (`/register`)
 Purpose: Create account.
 Content:
-- Brand + “Join Family App”
+- Brand + “Join Tijori”
 - Headline: “Create account”
 - Fields: Phone, Display name, Password, Confirm password
 - Primary: “Create account”

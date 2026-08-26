@@ -4,10 +4,15 @@ namespace App\Listeners;
 
 use App\Modules\Devices\Services\PushNotificationService;
 use App\Modules\Media\Events\MediaSharedWithUser;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Queue\InteractsWithQueue;
 
-/** Runs inline so media pushes work even when a queue worker is not running. */
-class SendMediaSharedPushNotification
+class SendMediaSharedPushNotification implements ShouldQueue
 {
+    use InteractsWithQueue;
+
+    public int $tries = 3;
+
     public function __construct(
         private readonly PushNotificationService $pushNotifications,
     ) {}

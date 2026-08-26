@@ -6,8 +6,8 @@ use OpenApi\Attributes as OA;
 
 #[OA\Info(
     version: '1.0.0',
-    title: 'Family App API',
-    description: 'Family networking platform API — phone auth, family graph, encrypted chat & media. Modules are grouped by tag in Swagger UI.',
+    title: 'Tijori API',
+    description: 'Tijori family networking platform API — phone auth, family graph, encrypted chat & media. Modules are grouped by tag in Swagger UI.',
 )]
 #[OA\Server(url: '/api/v1', description: 'API v1')]
 #[OA\SecurityScheme(

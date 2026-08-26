@@ -51,16 +51,11 @@ class AdminStoragePlanController extends Controller
         $user = $this->planService->requireUser($userUuid);
         $plan = $this->planService->requirePlan($request->validated('storage_plan_uuid'));
 
-        $startsAt = $request->date('starts_at') ?? now();
-        $endsAt = $request->date('ends_at');
-
-        $assignment = $this->assignmentService->assign(
+        $assignment = $this->assignmentService->changePlan(
             $user,
             $plan,
             $request->user(),
             'admin_manual',
-            $startsAt,
-            $endsAt,
         );
 
         return response()->json($this->assignmentService->formatAssignment($assignment->load('plan')));

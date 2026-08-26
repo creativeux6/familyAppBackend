@@ -4,7 +4,7 @@
 
 | Variable | Example | Description |
 |----------|---------|-------------|
-| `APP_NAME` | FamilyApp | Application name |
+| `APP_NAME` | Tijori | Application name |
 | `APP_ENV` | local / production | Environment |
 | `APP_KEY` | base64:... | Laravel encryption key |
 | `APP_URL` | http://localhost:8000 | API base URL |
@@ -36,7 +36,27 @@
 | `REDIS_HOST` | redis | Redis host |
 | `REDIS_PORT` | 6379 | Redis port |
 
-## S3 / MinIO
+## S3 / MinIO / Backblaze B2
+
+Production media uses **Backblaze B2** (S3-compatible) via the `b2` disk.
+
+| Variable | Example | Description |
+|----------|---------|-------------|
+| `MEDIA_DISK` | `b2` | Media storage disk (`b2`, `s3`, or `local`) |
+| `B2_KEY_ID` | (key id) | B2 application key ID |
+| `B2_APPLICATION_KEY` | (secret) | B2 application key |
+| `B2_REGION` | `eu-central-003` | B2 region |
+| `B2_BUCKET` | `tagori` | Bucket name |
+| `B2_ENDPOINT` | `https://s3.eu-central-003.backblazeb2.com` | S3-compatible endpoint |
+| `B2_USE_PATH_STYLE_ENDPOINT` | `true` | Required for B2 |
+| `MEDIA_KEY_PREFIX` | `tagori/media` | Folder inside the bucket. Objects are `{prefix}/{user_uuid}/{media_uuid}` — never the bucket root |
+| `AVATAR_KEY_PREFIX` | `tagori/avatars` | Avatar objects under `{prefix}/…` |
+| `B2_STORAGE_USD_PER_GB_MONTH` | `0.006` | Admin estimated storage cost |
+| `B2_EGRESS_USD_PER_GB` | `0.01` | Admin estimated download/stream/view cost |
+| `MEDIA_ACCESS_SOFT_REMAINING_BYTES` | `536870912` | Soft-gate when remaining ≤ this (default 0.5 GB) |
+| `MEDIA_LARGE_FILE_BYTES` | `104857600` | Soft-gate blocks media larger than this (default 100 MB) |
+
+Local MinIO (optional) may still use `MEDIA_DISK=s3` + `AWS_*` for development:
 
 | Variable | Example | Description |
 |----------|---------|-------------|
@@ -46,8 +66,6 @@
 | `AWS_BUCKET` | family-app-media | Bucket name |
 | `AWS_ENDPOINT` | http://minio:9000 | MinIO endpoint (local) |
 | `AWS_USE_PATH_STYLE_ENDPOINT` | true | Required for MinIO |
-| `MEDIA_DISK` | s3 / local | Media storage disk |
-| `MEDIA_KEY_PREFIX` | media | S3 key prefix |
 
 ## Reverb (WebSockets)
 

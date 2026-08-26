@@ -20,6 +20,7 @@ class SendMessageRequest extends FormRequest
             'encryption_version' => ['sometimes', 'integer', 'min:1'],
             'type' => ['sometimes', 'in:text,media_reference,system'],
             'media_file_uuid' => ['nullable', 'uuid'],
+            'client_message_id' => ['sometimes', 'nullable', 'uuid'],
         ];
     }
 }

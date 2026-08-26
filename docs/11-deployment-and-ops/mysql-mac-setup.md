@@ -103,7 +103,7 @@ Laravel `.env` is already configured for this database.
 Use these when adding a new connection:
 
 ```
-Name:     Family App Local
+Name:     Tijori Local
 Host:     127.0.0.1
 Port:     3306
 User:     family_app
@@ -134,7 +134,7 @@ bash scripts/install-tableplus.sh
 
 This installs TablePlus to `/Applications/TablePlus.app` (global — launch from Spotlight, Dock, or `open -a TablePlus`).
 
-### Open Family App database in TablePlus
+### Open Tijori database in TablePlus
 
 ```bash
 bash scripts/open-tableplus-family-db.sh
@@ -144,7 +144,7 @@ Or add connection manually in TablePlus:
 
 | Field | Value |
 |-------|-------|
-| Name | Family App Local |
+| Name | Tijori Local |
 | Type | MySQL |
 | Host | 127.0.0.1 |
 | Port | 3306 |

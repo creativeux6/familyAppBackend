@@ -1,8 +1,8 @@
 # Production Deployment Runbook
 
-Deploy Family App backend for a **private beta** or early production launch. Assumes Ubuntu 22.04/24.04 LTS (or similar) with root/sudo access.
+Deploy Tijori backend for a **private beta** or early production launch. Assumes Ubuntu 22.04/24.04 LTS (or similar) with root/sudo access.
 
-For local development, see [commands.md](./commands.md). For env vars, see [env-variables.md](./env-variables.md).
+For local development, see [commands.md](./commands.md). For env vars, see [env-variables.md](./env-variables.md). Production command list: [production-commands.md](./production-commands.md).
 
 ---
 
@@ -74,7 +74,7 @@ sudo -u familyapp -H bash -c '
 ### Production `.env` essentials
 
 ```env
-APP_NAME=FamilyApp
+APP_NAME=Tijori
 APP_ENV=production
 APP_DEBUG=false
 APP_URL=https://api.yourdomain.com
@@ -99,12 +99,13 @@ REVERB_SCHEME=https
 REVERB_SERVER_HOST=127.0.0.1
 REVERB_SERVER_PORT=8080
 
-MEDIA_DISK=s3
-AWS_ACCESS_KEY_ID=...
-AWS_SECRET_ACCESS_KEY=...
-AWS_DEFAULT_REGION=us-east-1
-AWS_BUCKET=family-app-media
-# No AWS_ENDPOINT in production (real S3)
+MEDIA_DISK=b2
+B2_KEY_ID=...
+B2_APPLICATION_KEY=...
+B2_REGION=eu-central-003
+B2_BUCKET=tagori
+B2_ENDPOINT=https://s3.eu-central-003.backblazeb2.com
+B2_USE_PATH_STYLE_ENDPOINT=true
 
 FIREBASE_PROJECT_ID=...
 FIREBASE_CLIENT_EMAIL=...
@@ -308,7 +309,7 @@ Expected (200):
 ```json
 {
   "status": "ok",
-  "app": "FamilyApp",
+  "app": "Tijori",
   "version": "v1",
   "timestamp": "...",
   "checks": { "database": "ok" }

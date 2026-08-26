@@ -78,7 +78,7 @@ class AdminUserService
 
         return [
             'user' => $this->formatListUser($user),
-            'storage' => $this->quotaService->summary($user),
+            'storage' => $this->quotaService->adminSummary($user),
             'roles' => $user->roles->pluck('name')->values()->all(),
             'management' => $this->formatManagementSummary($user),
             'plan_assignment' => $assignment
@@ -178,6 +178,15 @@ class AdminUserService
         return $this->show($user->uuid);
     }
 
+    public function resetAccessUsage(User $admin, string $uuid, ?string $ip = null): array
+    {
+        $user = $this->requireUser($uuid);
+        $this->quotaService->resetAccessUsage($user);
+        $this->auditLogService->log($admin, 'user.access_usage_reset', 'user', $user->uuid, [], $ip);
+
+        return $this->show($user->uuid);
+    }
+
     private function requireUser(string $uuid): User
     {
         $user = User::query()->where('uuid', $uuid)->first();
@@ -199,16 +208,26 @@ class AdminUserService
             : $this->planAssignmentService->activeAssignment($user);
 
         $plan = $assignment?->plan;
+        $storage = null;
+        try {
+            $storage = $this->quotaService->adminSummary($user);
+        } catch (\Throwable) {
+            $storage = null;
+        }
 
         return [
             'uuid' => $user->uuid,
             'display_name' => $user->display_name,
-            'storage_used_bytes' => $user->storage_used_bytes,
+            'storage_used_bytes' => $storage['stored_bytes'] ?? $user->storage_used_bytes,
             'storage_read_bytes' => $user->storage_read_bytes,
-            'storage_total_used_bytes' => (int) $user->storage_used_bytes + (int) $user->storage_read_bytes,
-            'plan_name' => $plan?->name,
-            'plan_slug' => $plan?->slug,
-            'quota_bytes' => $plan ? (int) $plan->quota_bytes : null,
+            'storage_read_period_bytes' => $storage['access_used_bytes'] ?? (int) $user->storage_read_period_bytes,
+            'storage_total_used_bytes' => $storage['stored_bytes'] ?? (int) $user->storage_used_bytes,
+            'access_used_bytes' => $storage['access_used_bytes'] ?? 0,
+            'access_quota_bytes' => $storage['access_quota_bytes'] ?? null,
+            'billing_status' => $storage['billing_status'] ?? $assignment?->billing_status,
+            'plan_name' => $storage['plan']['name'] ?? $plan?->name,
+            'plan_slug' => $storage['plan']['slug'] ?? $plan?->slug,
+            'quota_bytes' => $storage['quota_bytes'] ?? ($plan ? (int) $plan->quota_bytes : null),
             'billing_period' => $plan
                 ? $this->planAssignmentService->normalizePeriod($plan->billing_period, $plan->slug)
                 : null,

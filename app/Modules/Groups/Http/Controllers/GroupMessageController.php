@@ -42,6 +42,7 @@ class GroupMessageController extends Controller
             (int) $request->input('encryption_version', 1),
             $request->input('type', 'text'),
             $request->validated('media_file_uuid'),
+            $request->validated('client_message_id'),
         );
 
         return response()->json($result, 201);

@@ -169,6 +169,30 @@ class PushNotificationService
         }
     }
 
+    public function notifyAccessUsageWarning(User $user, string $message): void
+    {
+        if (! $this->fcmClient->isConfigured()) {
+            return;
+        }
+
+        $tokens = $this->tokenService->tokensForUser($user);
+        if ($tokens === []) {
+            return;
+        }
+
+        foreach ($tokens as $token) {
+            $this->fcmClient->send(
+                $token,
+                'Storage',
+                $message,
+                [
+                    'type' => 'storage.access_warning',
+                ],
+                0,
+            );
+        }
+    }
+
     private function notifyUserAboutMessage(User $recipient, Message $message): void
     {
         $tokens = $this->tokenService->tokensForUser($recipient);

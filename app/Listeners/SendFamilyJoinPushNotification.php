@@ -4,10 +4,15 @@ namespace App\Listeners;
 
 use App\Modules\Devices\Services\PushNotificationService;
 use App\Modules\FamilyTree\Events\FamilyMemberJoined;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Queue\InteractsWithQueue;
 
-/** Runs inline so family-join pushes work even when a queue worker is not running. */
-class SendFamilyJoinPushNotification
+class SendFamilyJoinPushNotification implements ShouldQueue
 {
+    use InteractsWithQueue;
+
+    public int $tries = 3;
+
     public function __construct(
         private readonly PushNotificationService $pushNotifications,
     ) {}

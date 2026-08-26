@@ -1,6 +1,6 @@
 # Flutter Mobile — Module 10
 
-Mobile client for Family App. Consumes Laravel API at `/api/v1/*` (see per-module contracts in `docs/01-*` through `docs/12-*`).
+Mobile client for Tijori. Consumes Laravel API at `/api/v1/*` (see per-module contracts in `docs/01-*` through `docs/12-*`).
 
 **UI design (Stitch):** [stitch-design-prompt.md](./stitch-design-prompt.md) — full page-by-page prompt for Google Stitch covering every Flutter screen, states, and sheets.
 

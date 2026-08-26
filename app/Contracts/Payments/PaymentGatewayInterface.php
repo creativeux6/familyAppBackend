@@ -10,4 +10,6 @@ interface PaymentGatewayInterface
     public function assignPlan(User $user, StoragePlan $plan, ?User $assignedBy = null): void;
 
     public function isEnabled(): bool;
+
+    public function charge(User $user, StoragePlan $plan, string $reason = 'renewal'): bool;
 }

@@ -1,6 +1,8 @@
 # Application Commands Reference
 
-Single source of truth for commands used in Family App development and operations. **Update this file whenever a new command or workflow is added.**
+Single source of truth for commands used in Tijori development and operations. **Update this file whenever a new command or workflow is added.**
+
+**Production commands only:** [production-commands.md](./production-commands.md)
 
 **Production deployment:** [production-deployment.md](./production-deployment.md) (nginx, Supervisor, SSL, capacity).
 
@@ -61,7 +63,7 @@ When you run `php artisan serve` (or `composer dev`) with `APP_ENV=local`, the a
 
 The scheduled command sends both **3-day-ahead reminders** and **day-of birthday / memorial / anniversary** wishes in one pass.
 
-**Production:** use Supervisor `schedule:work` (see [production-deployment.md](./production-deployment.md#4-supervisor--reverb-queue-and-scheduler)) — not `php artisan serve`.
+**Production:** use Supervisor `schedule:work` (see [production-deployment.md](./production-deployment.md#4-supervisor--reverb-queue-and-scheduler)) — not `php artisan serve`. Production command list: [production-commands.md](./production-commands.md).
 
 ### Option B — separate terminals
 
@@ -116,7 +118,7 @@ Seeded users (`php artisan migrate --seed`):
 
 Login: `POST /api/v1/auth/login`
 
-Seeded plans: **Free** (1 GB), **Family** (10 GB), **Premium** (50 GB). All dev users get the **Family** plan.
+Seeded plans: **Free** (5 GB stored / 15 GB access, yearly), **Personal** (100 GB, monthly), **Plus** (200 GB shared, 4 members), **Pro** (500 GB shared, 8 members). New users get **Free**.
 
 ### User journey (after login)
 
@@ -186,6 +188,7 @@ MinIO console: http://localhost:9001 — create bucket `family-app-media` (priva
 
 ```env
 FILESYSTEM_DISK=s3
+# Local MinIO (dev). Production uses MEDIA_DISK=b2 + B2_* (see env-variables.md).
 MEDIA_DISK=s3
 AWS_ACCESS_KEY_ID=minioadmin
 AWS_SECRET_ACCESS_KEY=minioadmin

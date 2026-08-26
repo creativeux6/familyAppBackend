@@ -4,10 +4,15 @@ namespace App\Listeners;
 
 use App\Modules\Connections\Events\ConnectionUpdated;
 use App\Modules\Devices\Services\PushNotificationService;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Queue\InteractsWithQueue;
 
-/** Runs inline so connect pushes work even when a queue worker is not running. */
-class SendConnectionPushNotification
+class SendConnectionPushNotification implements ShouldQueue
 {
+    use InteractsWithQueue;
+
+    public int $tries = 3;
+
     public function __construct(
         private readonly PushNotificationService $pushNotifications,
     ) {}

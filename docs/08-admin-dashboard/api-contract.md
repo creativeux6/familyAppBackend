@@ -39,7 +39,19 @@ Platform overview metrics (unchanged).
   "families_total": 45,
   "groups_total": 210,
   "media_files_active": 980,
-  "abuse_reports_open": 3
+  "abuse_reports_open": 3,
+  "active_subscribers": 12,
+  "assignments_past_due": 1,
+  "assignments_media_locked": 0,
+  "storage_used_bytes": 104857600,
+  "streamed_bytes": 0,
+  "downloaded_bytes": 0,
+  "file_viewed_bytes": 0,
+  "estimated_b2_storage_usd": 0.0006,
+  "estimated_b2_egress_usd": 0,
+  "estimated_b2_total_usd": 0.0006,
+  "estimated_revenue_usd": 35.88,
+  "estimated_gross_margin_usd": 35.8794
 }
 ```
 

@@ -10,3 +10,5 @@ Artisan::command('inspire', function () {
 
 Schedule::command('calendar:send-notifications')->dailyAt('00:00');
 Schedule::command('storage:renew-plans')->dailyAt('00:15');
+Schedule::command('payments:retry-past-due')->hourly();
+Schedule::command('media:sweep-pending-uploads')->hourly();

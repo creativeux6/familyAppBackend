@@ -48,6 +48,8 @@ class MediaUploadService
             );
         }
 
+        $this->quotaService->assertNotMediaLocked($user);
+
         if (! $this->coOwnerService->isChatCoOwnerMetadata($normalizedMetadata)) {
             $this->quotaService->assertCanStore($user, $sizeBytes + $pendingBytes);
         }
@@ -55,7 +57,9 @@ class MediaUploadService
         $uuid = (string) Str::uuid();
         $diskName = (string) config('media.disk');
         $disk = Storage::disk($diskName);
-        $bucket = $diskName === 's3' ? (string) config('filesystems.disks.s3.bucket') : 'local';
+        $bucket = in_array($diskName, ['s3', 'b2'], true)
+            ? (string) config("filesystems.disks.{$diskName}.bucket")
+            : 'local';
         $key = $this->storageKey($user, $uuid);
 
         $media = MediaFile::create([
@@ -111,26 +115,87 @@ class MediaUploadService
         $media = $this->accessService->requireMedia($uuid);
         $this->accessService->assertOwner($user, $media);
 
-        if ($media->status !== 'pending_upload') {
+        if ($media->status === 'active') {
+            return $this->formatMedia($media, $user);
+        }
+
+        if (! in_array($media->status, ['pending_upload', 'finalizing'], true)) {
             throw ValidationException::withMessages([
                 'media' => ['Upload is not pending.'],
             ]);
         }
 
-        $disk = Storage::disk((string) config('media.disk'));
-        $media = $media->fresh();
+        $claim = DB::transaction(function () use ($user, $uuid) {
+            $locked = MediaFile::query()->where('uuid', $uuid)->lockForUpdate()->firstOrFail();
+            $this->accessService->assertOwner($user, $locked);
 
-        if (! empty($media->uploaded_parts)) {
-            $actualSize = $this->chunkedUploadService->finalizeChunkedUpload($media, $disk);
-        } else {
-            $actualSize = $this->resolveUploadedSizeBytes($disk, $media);
+            if ($locked->status === 'active') {
+                return ['state' => 'active', 'media' => $locked];
+            }
+
+            if ($locked->status === 'finalizing') {
+                return ['state' => 'finalizing', 'media' => $locked];
+            }
+
+            if ($locked->status !== 'pending_upload') {
+                throw ValidationException::withMessages([
+                    'media' => ['Upload is not pending.'],
+                ]);
+            }
+
+            $locked->update(['status' => 'finalizing']);
+
+            return ['state' => 'claimed', 'media' => $locked->fresh()];
+        });
+
+        if ($claim['state'] === 'active') {
+            return $this->formatMedia($claim['media'], $user);
         }
 
-        return DB::transaction(function () use ($user, $media, $actualSize) {
+        /** @var MediaFile $media */
+        $media = $claim['media'];
+        $disk = Storage::disk((string) config('media.disk'));
+
+        try {
+            if (! empty($media->uploaded_parts)) {
+                $actualSize = $this->chunkedUploadService->finalizeChunkedUpload($media, $disk);
+            } else {
+                $actualSize = $this->resolveUploadedSizeBytes($disk, $media);
+            }
+        } catch (\Throwable $e) {
+            if ($claim['state'] === 'finalizing') {
+                // Another request may have already finished multipart; activate if object exists.
+                try {
+                    $actualSize = $this->resolveUploadedSizeBytes($disk, $media);
+                } catch (\Throwable) {
+                    throw $e;
+                }
+            } else {
+                MediaFile::query()
+                    ->where('uuid', $uuid)
+                    ->where('status', 'finalizing')
+                    ->update(['status' => 'pending_upload']);
+
+                throw $e;
+            }
+        }
+
+        return DB::transaction(function () use ($user, $uuid, $actualSize) {
+            $media = MediaFile::query()->where('uuid', $uuid)->lockForUpdate()->firstOrFail();
+
+            if ($media->status === 'active') {
+                return $this->formatMedia($media, $user);
+            }
+
+            $owner = User::query()
+                ->where('id', $media->owner_user_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
             $skipSenderQuota = $this->coOwnerService->isChatCoOwnerMedia($media);
 
             if (! $skipSenderQuota) {
-                $this->quotaService->assertCanStore($user, $actualSize);
+                $this->quotaService->assertCanStore($owner, $actualSize);
             }
 
             $media->update([
@@ -141,7 +206,7 @@ class MediaUploadService
             ]);
 
             if (! $skipSenderQuota) {
-                $this->quotaService->addUsage($user->fresh(), $actualSize);
+                $this->quotaService->addUsage($owner->fresh(), $actualSize);
             }
 
             return $this->formatMedia($media->fresh(), $user);
@@ -359,7 +424,6 @@ class MediaUploadService
             'events' => $eventService->listForUser($user, $eventScope),
             'quota_bytes' => $this->quotaService->quotaBytes($user),
             'stored_bytes' => $this->quotaService->storedBytes($user),
-            'read_bytes' => $this->quotaService->readBytes($user),
             'used_bytes' => $this->quotaService->usedBytes($user),
             'over_quota' => $this->quotaService->isOverQuota($user),
         ];
@@ -495,10 +559,13 @@ class MediaUploadService
         $disk = Storage::disk((string) config('media.disk'));
 
         $thumbBytes = max(0, (int) $media->thumbnail_size_bytes);
+        $this->quotaService->assertNotMediaLocked($user);
         $this->quotaService->chargeReadTransfer(
             $user,
             $thumbBytes,
             $this->coOwnerService->isChatMedia($media),
+            StorageQuotaService::ACTION_FILE_VIEW,
+            $media->uuid,
         );
 
         return response()->streamDownload(function () use ($disk, $media) {
@@ -511,7 +578,20 @@ class MediaUploadService
 
     private function storageKey(User $user, string $uuid): string
     {
-        return config('media.key_prefix').'/'.$user->uuid.'/'.$uuid;
+        return $this->mediaKeyPrefix().'/'.$user->uuid.'/'.$uuid;
+    }
+
+    /**
+     * Always store under a folder inside the bucket (never the bucket root).
+     * Always store under a folder inside the bucket (never the bucket root).
+     * Layout: {MEDIA_KEY_PREFIX}/{user}/{uuid}.
+     */
+    private function mediaKeyPrefix(): string
+    {
+        $fallback = 'tagori/media';
+        $prefix = trim((string) config('media.key_prefix', $fallback), '/');
+
+        return $prefix !== '' ? $prefix : $fallback;
     }
 
     /** @param array<string, mixed>|null $metadata */
@@ -633,9 +713,10 @@ class MediaUploadService
     /** @return array<string, mixed> */
     private function buildUploadTarget(string $diskName, string $key, \Illuminate\Support\Carbon $expiresAt, string $mediaUuid): array
     {
-        if ($diskName === 's3' && filled(config('filesystems.disks.s3.bucket'))) {
+        if (in_array($diskName, ['s3', 'b2'], true)
+            && filled(config("filesystems.disks.{$diskName}.bucket"))) {
             /** @var \Illuminate\Filesystem\FilesystemAdapter $disk */
-            $disk = Storage::disk('s3');
+            $disk = Storage::disk($diskName);
             $presigned = $disk->temporaryUploadUrl($key, $expiresAt, [
                 'ContentType' => 'application/octet-stream',
             ]);
@@ -713,7 +794,9 @@ class MediaUploadService
     {
         $media = $this->accessService->requireMedia($uuid);
         $this->accessService->assertCanView($user, $media);
+        $this->quotaService->assertNotMediaLocked($user);
         $this->assertNonChatLibraryAccess($user, $media);
+        $this->assertLargeMediaAccess($user, $media);
 
         if ($media->status !== 'active') {
             throw ValidationException::withMessages([
@@ -728,12 +811,24 @@ class MediaUploadService
             $user,
             $transferBytes,
             $this->coOwnerService->isChatMedia($media),
+            StorageQuotaService::ACTION_DOWNLOAD,
+            $media->uuid,
         );
 
         $disk = Storage::disk((string) config('media.disk'));
+        $key = $media->s3_key;
 
-        return response()->streamDownload(function () use ($disk, $media) {
-            echo $disk->get($media->s3_key);
+        return response()->streamDownload(function () use ($disk, $key) {
+            $stream = $disk->readStream($key);
+            if ($stream === false) {
+                echo $disk->get($key);
+
+                return;
+            }
+            fpassthru($stream);
+            if (is_resource($stream)) {
+                fclose($stream);
+            }
         }, $media->display_name ?? $media->uuid, [
             'Content-Type' => $media->mime_type,
         ]);
@@ -746,5 +841,15 @@ class MediaUploadService
         }
 
         $this->quotaService->assertCanAccessLibrary($user);
+    }
+
+    /** Soft monthly-access gate: block gallery opens of media larger than the threshold. */
+    private function assertLargeMediaAccess(User $user, MediaFile $media): void
+    {
+        if ($this->coOwnerService->isChatMedia($media)) {
+            return;
+        }
+
+        $this->quotaService->assertCanOpenMedia($user, $media);
     }
 }

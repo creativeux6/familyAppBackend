@@ -10,12 +10,26 @@ const emptyForm = {
   slug: '',
   description: '',
   quota_gb: '5',
+  access_gb: '15',
+  stream_gb: '10',
+  download_gb: '5',
+  file_view_gb: '15',
   price: '0',
   currency: 'USD',
   billing_period: 'monthly',
+  is_shared: false,
+  max_shared_members: '0',
   is_active: true,
   sort_order: '10',
 };
+
+function bytesToGb(bytes) {
+  return String((Number(bytes) || 0) / (1024 * 1024 * 1024));
+}
+
+function gbToBytes(gb) {
+  return Math.round(Number(gb) * 1024 * 1024 * 1024);
+}
 
 function slugify(value) {
   return value
@@ -34,17 +48,22 @@ function planToForm(plan) {
     name: plan.name || '',
     slug: plan.slug || '',
     description: plan.description || '',
-    quota_gb: String((Number(plan.quota_bytes) || 0) / (1024 * 1024 * 1024)),
+    quota_gb: bytesToGb(plan.storage_limit_bytes || plan.quota_bytes),
+    access_gb: bytesToGb(plan.monthly_access_limit_bytes),
+    stream_gb: bytesToGb(plan.streaming_limit_bytes),
+    download_gb: bytesToGb(plan.download_limit_bytes),
+    file_view_gb: bytesToGb(plan.file_view_limit_bytes),
     price: String(((Number(plan.display_price_cents) || 0) / 100).toFixed(2)),
     currency: plan.currency || 'USD',
     billing_period: period,
+    is_shared: Boolean(plan.is_shared),
+    max_shared_members: String(plan.max_shared_members ?? 0),
     is_active: Boolean(plan.is_active),
     sort_order: String(plan.sort_order ?? 0),
   };
 }
 
 function formToPayload(form) {
-  const quotaGb = Number(form.quota_gb);
   const price = Number(form.price);
   const slug = form.slug.trim();
   const billingPeriod = slug === 'free' ? 'yearly' : form.billing_period || 'monthly';
@@ -53,7 +72,14 @@ function formToPayload(form) {
     name: form.name.trim(),
     slug,
     description: form.description.trim() || null,
-    quota_bytes: Math.round(quotaGb * 1024 * 1024 * 1024),
+    quota_bytes: gbToBytes(form.quota_gb),
+    storage_limit_bytes: gbToBytes(form.quota_gb),
+    monthly_access_limit_bytes: gbToBytes(form.access_gb || form.quota_gb),
+    streaming_limit_bytes: gbToBytes(form.stream_gb || form.access_gb),
+    download_limit_bytes: gbToBytes(form.download_gb || form.quota_gb),
+    file_view_limit_bytes: gbToBytes(form.file_view_gb || form.access_gb),
+    is_shared: Boolean(form.is_shared) && slug !== 'free',
+    max_shared_members: Boolean(form.is_shared) && slug !== 'free' ? Number(form.max_shared_members) || 0 : 0,
     display_price_cents: Math.round(price * 100),
     currency: (form.currency || 'USD').toUpperCase(),
     billing_period: billingPeriod,
@@ -387,7 +413,7 @@ export function StoragePlansPage() {
                       />
                     </Field>
                   </div>
-                  <Field label="Data limit (GB)">
+                  <Field label="Storage (GB)">
                     <input
                       required
                       type="number"
@@ -395,6 +421,46 @@ export function StoragePlansPage() {
                       step="0.1"
                       value={form.quota_gb}
                       onChange={(e) => setForm((prev) => ({ ...prev, quota_gb: e.target.value }))}
+                      className={inputClassName()}
+                    />
+                  </Field>
+                  <Field label="Monthly access (GB)">
+                    <input
+                      type="number"
+                      min="0.1"
+                      step="0.1"
+                      value={form.access_gb}
+                      onChange={(e) => setForm((prev) => ({ ...prev, access_gb: e.target.value }))}
+                      className={inputClassName()}
+                    />
+                  </Field>
+                  <Field label="Streaming (GB)">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={form.stream_gb}
+                      onChange={(e) => setForm((prev) => ({ ...prev, stream_gb: e.target.value }))}
+                      className={inputClassName()}
+                    />
+                  </Field>
+                  <Field label="Downloads (GB)">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={form.download_gb}
+                      onChange={(e) => setForm((prev) => ({ ...prev, download_gb: e.target.value }))}
+                      className={inputClassName()}
+                    />
+                  </Field>
+                  <Field label="File views (GB)">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.1"
+                      value={form.file_view_gb}
+                      onChange={(e) => setForm((prev) => ({ ...prev, file_view_gb: e.target.value }))}
                       className={inputClassName()}
                     />
                   </Field>
@@ -451,6 +517,29 @@ export function StoragePlansPage() {
                       className={inputClassName()}
                     />
                   </Field>
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(form.is_shared) && form.slug !== 'free'}
+                      disabled={form.slug === 'free'}
+                      onChange={(e) =>
+                        setForm((prev) => ({ ...prev, is_shared: e.target.checked }))
+                      }
+                    />
+                    Shared plan
+                  </label>
+                  <Field label="Max shared members (owner not counted)">
+                    <input
+                      type="number"
+                      min="0"
+                      disabled={!form.is_shared || form.slug === 'free'}
+                      value={form.max_shared_members}
+                      onChange={(e) =>
+                        setForm((prev) => ({ ...prev, max_shared_members: e.target.value }))
+                      }
+                      className={inputClassName()}
+                    />
+                  </Field>
                   <label className="flex items-center gap-2 text-sm text-slate-700 sm:col-span-2">
                     <input
                       type="checkbox"
@@ -485,8 +574,26 @@ export function StoragePlansPage() {
                   <DetailRow label="Plan name" value={modal.plan?.name} />
                   <DetailRow label="Slug" value={modal.plan?.slug} />
                   <DetailRow
-                    label="Data limit"
-                    value={formatBytes(modal.plan?.quota_bytes)}
+                    label="Storage"
+                    value={formatBytes(modal.plan?.storage_limit_bytes || modal.plan?.quota_bytes)}
+                  />
+                  <DetailRow
+                    label="Monthly access"
+                    value={formatBytes(modal.plan?.monthly_access_limit_bytes)}
+                  />
+                  <DetailRow label="Streaming" value={formatBytes(modal.plan?.streaming_limit_bytes)} />
+                  <DetailRow label="Downloads" value={formatBytes(modal.plan?.download_limit_bytes)} />
+                  <DetailRow
+                    label="File views"
+                    value={formatBytes(modal.plan?.file_view_limit_bytes)}
+                  />
+                  <DetailRow
+                    label="Seats"
+                    value={
+                      modal.plan?.is_shared
+                        ? `Shared · ${modal.plan?.max_shared_members ?? 0} members + owner`
+                        : 'Owner only'
+                    }
                   />
                   <DetailRow
                     label="Price"

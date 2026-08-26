@@ -37,7 +37,9 @@ class MediaStreamService
     {
         $media = $this->accessService->requireMedia($uuid);
         $this->accessService->assertCanView($user, $media);
+        $this->quotaService->assertNotMediaLocked($user);
         $this->assertNonChatLibraryAccess($user, $media);
+        $this->assertLargeMediaAccess($user, $media);
 
         if ($media->status !== 'active') {
             throw ValidationException::withMessages([
@@ -63,6 +65,14 @@ class MediaStreamService
             ]);
         }
 
+        $this->quotaService->chargeReadTransfer(
+            $user,
+            $this->streamChargeBytes($media, (int) ($decoded['total_bytes'] ?? $media->size_bytes)),
+            $this->coOwnerService->isChatMedia($media),
+            StorageQuotaService::ACTION_STREAM,
+            $media->uuid,
+        );
+
         return $decoded;
     }
 
@@ -70,7 +80,9 @@ class MediaStreamService
     {
         $media = $this->accessService->requireMedia($uuid);
         $this->accessService->assertCanView($user, $media);
+        $this->quotaService->assertNotMediaLocked($user);
         $this->assertNonChatLibraryAccess($user, $media);
+        $this->assertLargeMediaAccess($user, $media);
 
         if ($media->status !== 'active') {
             throw ValidationException::withMessages([
@@ -94,21 +106,45 @@ class MediaStreamService
         }
 
         $size = (int) $disk->size($key);
+        // Co-owner stored quota stays incremental/capped; egress is once per window.
         $this->coOwnerService->chargeStreamBytesIfNeeded($user, $media, $size);
         $this->quotaService->chargeReadTransfer(
             $user,
-            $size,
+            $this->streamChargeBytes($media, $size),
             $this->coOwnerService->isChatMedia($media),
+            StorageQuotaService::ACTION_STREAM,
+            $media->uuid,
         );
 
         return response()->streamDownload(function () use ($disk, $key) {
-            echo $disk->get($key);
+            $stream = $disk->readStream($key);
+            if ($stream === false) {
+                echo $disk->get($key);
+
+                return;
+            }
+            fpassthru($stream);
+            if (is_resource($stream)) {
+                fclose($stream);
+            }
         }, 'chunk-'.$index.'.bin', [
             'Content-Type' => 'application/octet-stream',
             'Content-Length' => (string) $size,
             'X-Media-Stream-Chunk' => (string) $index,
             'X-Media-Stream-Bytes' => (string) $size,
         ]);
+    }
+
+    private function streamChargeBytes(MediaFile $media, int $bytesHint): int
+    {
+        $metadata = is_array($media->metadata) ? $media->metadata : [];
+
+        return max(
+            0,
+            (int) ($metadata['stream_total_bytes'] ?? 0),
+            (int) $media->size_bytes,
+            $bytesHint,
+        );
     }
 
     public function storeManifest(User $user, string $uuid, array $manifest): array
@@ -207,14 +243,12 @@ class MediaStreamService
     {
         $disk = Storage::disk((string) config('media.disk'));
         $prefix = $this->streamPrefix($media);
-        // Best-effort cleanup of known keys from metadata.
         $metadata = is_array($media->metadata) ? $media->metadata : [];
         $count = (int) ($metadata['stream_chunk_count'] ?? 0);
         for ($i = 0; $i < $count; $i++) {
             $disk->delete($this->chunkKey($media, $i));
         }
         $disk->delete($this->manifestKey($media));
-        // Also try deleting directory marker if local disk supports it.
         try {
             $disk->deleteDirectory($prefix);
         } catch (\Throwable) {
@@ -229,5 +263,14 @@ class MediaStreamService
         }
 
         $this->quotaService->assertCanAccessLibrary($user);
+    }
+
+    private function assertLargeMediaAccess(User $user, MediaFile $media): void
+    {
+        if ($this->coOwnerService->isChatMedia($media)) {
+            return;
+        }
+
+        $this->quotaService->assertCanOpenMedia($user, $media);
     }
 }

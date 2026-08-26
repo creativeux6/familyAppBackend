@@ -141,4 +141,22 @@ class AdminUserController extends Controller
             $request->ip(),
         ));
     }
+
+    #[OA\Post(
+        path: '/admin/users/{uuid}/access-usage/reset',
+        operationId: 'adminUsersResetAccessUsage',
+        summary: 'Reset monthly media access usage for a user',
+        tags: ['Admin'],
+        security: [['bearerAuth' => []]],
+        parameters: [new OA\Parameter(name: 'uuid', in: 'path', required: true, schema: new OA\Schema(type: 'string', format: 'uuid'))],
+        responses: [new OA\Response(response: 200, description: 'Access usage reset')]
+    )]
+    public function resetAccessUsage(Request $request, string $uuid): JsonResponse
+    {
+        return response()->json($this->userService->resetAccessUsage(
+            $request->user(),
+            $uuid,
+            $request->ip(),
+        ));
+    }
 }

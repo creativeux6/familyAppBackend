@@ -120,6 +120,14 @@ class AppServiceProvider extends ServiceProvider
                     ->response(fn () => $this->tooManyAttemptsResponse()),
             ];
         });
+
+        RateLimiter::for('chat-messages', function (Request $request) {
+            $userId = $request->user()?->id ?? 'guest';
+
+            return Limit::perMinute((int) config('security.chat_messages_per_minute_user', 60))
+                ->by('chat-messages-user:'.$userId)
+                ->response(fn () => $this->tooManyAttemptsResponse());
+        });
     }
 
     private function phoneFingerprint(string $phone): string

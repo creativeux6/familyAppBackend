@@ -46,7 +46,10 @@ Review gate document. Laravel migration files in `backend/database/migrations/` 
 | password | varchar | Hashed password (required) |
 | is_anonymous | boolean default false | |
 | storage_used_bytes | bigint default 0 | Stored (uploaded) bytes |
-| storage_read_bytes | bigint default 0 | Cumulative read/egress bytes (`2026_07_15_000001_…`) |
+| storage_read_bytes | bigint default 0 | Lifetime read/egress bytes (`2026_07_15_000001_…`) |
+| storage_read_period_bytes | bigint default 0 | Monthly access / egress (`2026_08_24_150000_…`) |
+| storage_read_period_ends_at | timestamp nullable | End of current access period |
+| storage_access_warn_level | tinyint default 0 | Last access-threshold warn level sent |
 | remember_token | varchar nullable | |
 | timestamps | | |
 | soft_deletes | | |

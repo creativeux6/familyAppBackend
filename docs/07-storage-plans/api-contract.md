@@ -1,23 +1,24 @@
 # Storage Plans — API Contract
 
+Product rules (catalog, shared members, upgrade/downgrade, failed payments): [plans-usage-membership-and-payments.md](./plans-usage-membership-and-payments.md)
+
 Base path: `/api/v1/storage` (user) and `/api/v1/admin/storage` (admin)
 
-v1: plans are **admin-assigned** (no payment gateway). v2: `PaymentGatewayInterface` for card/bank checkout.
+v1: plans are **admin-assigned**; user self-serve change uses a stub gateway (`PAYMENTS_STUB_SUCCEED`). Live card/bank checkout is later.
 
 ---
 
 ## User — GET /storage/quota
 
-Current storage usage and active plan.
+Current **stored** usage and active plan. Monthly access, stream, download, and cost are **not** returned here.
 
 **Response 200:**
 ```json
 {
   "quota_bytes": 5368709120,
   "stored_bytes": 800000,
-  "read_bytes": 248576,
-  "used_bytes": 1048576,
-  "remaining_bytes": 5367660544,
+  "used_bytes": 800000,
+  "remaining_bytes": 5367909120,
   "unlimited": false,
   "over_quota": false,
   "using_default_quota": true,
@@ -26,26 +27,42 @@ Current storage usage and active plan.
     "name": "Free",
     "slug": "free",
     "quota_bytes": 5368709120,
+    "storage_limit_bytes": 5368709120,
+    "monthly_access_limit_bytes": 16106127360,
     "display_price_cents": 0,
     "currency": "USD"
   },
   "assignment": {
+    "id": 1,
     "starts_at": "2026-06-14T00:00:00Z",
-    "ends_at": null,
-    "source": "system_default"
+    "ends_at": "2027-06-14T00:00:00Z",
+    "source": "system_default",
+    "billing_status": "active"
   }
 }
 ```
 
-Every user gets the seeded **Free (5 GB)** plan on register (`system_default`). Quota is always from the assigned plan (admin can change plans later). There is **no** `MEDIA_DEFAULT_QUOTA_BYTES` fallback — see [permanent-product-rules.md](../00-overview/permanent-product-rules.md).
+Every user gets the seeded **Free (5 GB stored / 15 GB monthly access)** plan on register (`system_default`). Caps live on the plan row (and the open `user_storage_usage` snapshot). There is **no** `MEDIA_DEFAULT_QUOTA_BYTES` fallback and **no** `3 × storage` in code — see [permanent-product-rules.md](../00-overview/permanent-product-rules.md).
 
-**Metering:** `stored_bytes` = uploads held; `read_bytes` = cumulative S3/API egress (full file / thumbnail / stream chunks); `used_bytes` = **stored + read** (this is what the plan enforces). See permanent product rules §3.
+When `"over_quota": true` (stored ≥ plan), gallery item access is blocked (uploads too); files are retained; chat stays available. When monthly access remaining ≤ 0.5 GB, gallery opens of media **> 100 MB** return: *Too many requests. Please upgrade your subscription.* Failed paid charges can set `billing_status` to `past_due` then `media_locked` (all media including chat).
 
-When `"over_quota": true`, gallery item access is blocked (uploads too); files are retained; chat stays available. Payments = next versions.
+Admin reset: `POST /admin/users/{uuid}/access-usage/reset`.
 
 ## User — GET /storage/plans
 
-List active plans (catalog for display; assignment is admin-only in v1).
+List active plans (catalog). Assignment is admin-only in v1; users can request a change via `POST /storage/plan-change` (stub charge).
+
+## User — GET /storage/members · POST /storage/members
+
+Current-cycle shared roster. Cycle starts **owner only**. `POST` with `{ "user_uuid": "..." }` adds a connected user into an empty seat. Members are **locked** for the cycle (no remove/swap).
+
+## User — GET /storage/billing · POST /storage/payments/retry
+
+Billing status (`active` | `past_due` | `media_locked`). Retry is allowed while past due or locked.
+
+## User — POST /storage/plan-change · POST /storage/plan-change/cancel
+
+`{ "storage_plan_uuid": "..." }`. Upgrade (higher price): charge then apply **now**. Downgrade: pending until the next **monthly** cycle. Cancel drops a pending downgrade.
 
 ---
 
@@ -62,37 +79,44 @@ Create a plan.
 **Request:**
 ```json
 {
-  "name": "Family",
-  "slug": "family",
-  "description": "Shared family media with 10 GB combined upload and read quota.",
-  "quota_bytes": 10737418240,
-  "display_price_cents": 0,
+  "name": "Plus",
+  "slug": "plus",
+  "description": "200 GB stored, 600 GB monthly access. Shared, 4 members + owner.",
+  "quota_bytes": 214748364800,
+  "storage_limit_bytes": 214748364800,
+  "monthly_access_limit_bytes": 644245094400,
+  "streaming_limit_bytes": 536870912000,
+  "download_limit_bytes": 214748364800,
+  "file_view_limit_bytes": 644245094400,
+  "is_shared": true,
+  "max_shared_members": 4,
+  "display_price_cents": 499,
   "currency": "USD",
   "billing_period": "monthly",
-  "sort_order": 10
+  "sort_order": 30
 }
 ```
 
-Fields: **plan name**, **description**, **data limit** (`quota_bytes`), **price** (`display_price_cents` + `currency`), **time limit** (`billing_period`: `monthly` | `yearly`).
+Fields: **plan name**, **description**, **storage** (`storage_limit_bytes` / `quota_bytes`), **monthly access** and stream/download/view sub-caps, **shared seats**, **price**, **billing period** (`monthly` | `yearly`).
 
 - **Free** plan: `billing_period=yearly` (forced)
 - Other plans: default `monthly`
-- Assignments always get `ends_at` = next **billing** date (start + period). `php artisan storage:renew-plans` (daily) advances that date when due.
-- **Quota does not reset on billing.** The assigned plan’s `quota_bytes` stays in force; `storage_used_bytes` / `storage_read_bytes` are never cleared by renewal. Only the plan **price** is charged on the interval (payments = later versions).
+- Assignments always get `ends_at` = next **billing** date. `php artisan storage:renew-plans` (daily) advances that date, rolls the usage period, applies pending downgrades, and resets the shared roster to the owner. `payments:retry-past-due` (hourly) retries failed charges.
+- **Storage quota does not reset on billing.** Stored bytes carry forward. Monthly **access** meters reset when the period rolls.
 
-Seed Free (5 GB / yearly billing), Family (10 GB / monthly billing), Premium (50 GB / monthly billing) via `StoragePlanSeeder`.
+Seed **Free / Personal / Plus / Pro** via `StoragePlanSeeder`.
 
 ## PATCH /admin/storage/plans/{uuid}
 
-Update plan fields. Set `is_active: false` to hide from catalog.
+Update plan fields. Set `is_active: false` to hide from catalog. Open usage rows for that plan refresh their limit snapshot.
 
 ## GET /admin/storage/users/{userUuid}/assignment
 
-Get user's active assignment.
+Get user's active assignment (includes pending downgrade and billing status).
 
 ## POST /admin/storage/users/{userUuid}/assign
 
-Assign a plan to a user (deactivates previous active assignment).
+Change the user's plan with the same upgrade-now / downgrade-next-cycle rules as the user endpoint.
 
 **Request:**
 ```json
@@ -106,6 +130,8 @@ Assign a plan to a user (deactivates previous active assignment).
 ## POST /admin/storage/assignments/{id}/revoke
 
 Deactivate an assignment.
+
+Admin dashboard and user detail include pool stored/access/stream/download/view plus estimated B2 cost vs plan revenue.
 
 ---
 
