@@ -40,6 +40,22 @@ class User extends Authenticatable
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, HasRoles, Notifiable, SoftDeletes;
 
+    /**
+     * Columns required when eager-loading users onto family members
+     * (privacy + profile photos). Omitting avatar keys makes tree nodes
+     * look like they have no photo.
+     *
+     * @var list<string>
+     */
+    public const FAMILY_GRAPH_COLUMNS = [
+        'id',
+        'uuid',
+        'is_anonymous',
+        'avatar_thumb_key',
+        'avatar_master_key',
+        'avatar_updated_at',
+    ];
+
     public function phones(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(UserPhone::class);

@@ -19,6 +19,7 @@ class StoragePlan extends Model
         'name',
         'description',
         'slug',
+        'play_product_id',
         'quota_bytes',
         'storage_limit_bytes',
         'monthly_access_limit_bytes',

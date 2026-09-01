@@ -55,7 +55,7 @@ class MediaOwnershipService
             'from_user_id' => $owner->id,
             'to_user_id' => $recipient->id,
             'status' => 'pending',
-            'size_bytes' => $media->size_bytes,
+            'size_bytes' => (int) $media->size_bytes + (int) $media->thumbnail_size_bytes,
         ]);
 
         return $this->formatTransfer($transfer);
@@ -73,8 +73,9 @@ class MediaOwnershipService
 
             $owner = User::query()->lockForUpdate()->findOrFail($transfer->from_user_id);
 
-            $this->quotaService->removeUsage($owner, (int) $media->size_bytes);
-            $this->quotaService->addUsage($recipient, (int) $media->size_bytes);
+            $charge = (int) $media->size_bytes + (int) $media->thumbnail_size_bytes;
+            $this->quotaService->removeUsage($owner, $charge);
+            $this->quotaService->addUsage($recipient, $charge);
 
             $media->update(['owner_user_id' => $recipient->id]);
 

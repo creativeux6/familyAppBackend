@@ -141,6 +141,8 @@ Free never enters this flow. Owner of a paid (or shared) plan is billed.
 
 Files stay in B2. Successful payment clears the lock immediately. This pass does **not** auto-downgrade to Free.
 
+Android paid plans use **Google Play Billing** (`tijori_personal` / `tijori_plus` / `tijori_pro`). The app never stub-charges paid SKUs. Play RTDN updates `billing_status` and drops to Free when the subscription expires or is revoked.
+
 ---
 
 ## 9. Admin (system + each user)

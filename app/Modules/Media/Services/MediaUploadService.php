@@ -478,7 +478,10 @@ class MediaUploadService
                     $disk->delete($media->thumbnail_s3_key);
                 }
                 app(MediaStreamService::class)->deleteStreamPackage($media);
-                $this->quotaService->removeUsage($user, (int) $media->size_bytes);
+                $this->quotaService->removeUsage(
+                    $user,
+                    (int) $media->size_bytes + (int) $media->thumbnail_size_bytes,
+                );
             } elseif ($media->status === 'pending_upload') {
                 $this->chunkedUploadService->cleanupPartialUpload($media);
             }
@@ -519,6 +522,14 @@ class MediaUploadService
             ]);
         }
 
+        $oldThumbBytes = (int) $media->thumbnail_size_bytes;
+        $newThumbBytes = strlen($binary);
+        $delta = $newThumbBytes - $oldThumbBytes;
+
+        if ($media->status === 'active' && $delta > 0) {
+            $this->quotaService->assertCanStore($user, $delta);
+        }
+
         $thumbKey = $media->s3_key.'.thumb';
         Storage::disk((string) config('media.disk'))->put($thumbKey, $binary);
 
@@ -531,9 +542,17 @@ class MediaUploadService
 
         $media->update([
             'thumbnail_s3_key' => $thumbKey,
-            'thumbnail_size_bytes' => strlen($binary),
+            'thumbnail_size_bytes' => $newThumbBytes,
             'metadata' => $metadata,
         ]);
+
+        if ($media->status === 'active') {
+            if ($delta > 0) {
+                $this->quotaService->addUsage($user, $delta);
+            } elseif ($delta < 0) {
+                $this->quotaService->removeUsage($user, abs($delta));
+            }
+        }
 
         return $this->formatMedia($media->fresh(), $user);
     }

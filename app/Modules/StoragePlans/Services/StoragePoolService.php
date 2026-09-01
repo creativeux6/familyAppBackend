@@ -264,7 +264,7 @@ class StoragePoolService
         return PlanAssignmentMember::query()
             ->where('assignment_id', $assignment->id)
             ->where('period_start', $usage->period_start)
-            ->with('user:id,uuid,display_name')
+            ->with('user')
             ->orderByRaw("role = 'owner' desc")
             ->orderBy('id')
             ->get();

@@ -50,7 +50,7 @@ Admin reset: `POST /admin/users/{uuid}/access-usage/reset`.
 
 ## User — GET /storage/plans
 
-List active plans (catalog). Assignment is admin-only in v1; users can request a change via `POST /storage/plan-change` (stub charge).
+List active plans (catalog). Paid rows include `play_product_id` for Google Play Billing.
 
 ## User — GET /storage/members · POST /storage/members
 
@@ -60,9 +60,21 @@ Current-cycle shared roster. Cycle starts **owner only**. `POST` with `{ "user_u
 
 Billing status (`active` | `past_due` | `media_locked`). Retry is allowed while past due or locked.
 
+## User — POST /storage/play/verify
+
+Android paid plan purchase. `{ "purchase_token", "product_id", "storage_plan_uuid?" }`. Verifies with the Google Play Developer API, then applies the plan (`source=google_play`).
+
 ## User — POST /storage/plan-change · POST /storage/plan-change/cancel
 
-`{ "storage_plan_uuid": "..." }`. Upgrade (higher price): charge then apply **now**. Downgrade: pending until the next **monthly** cycle. Cancel drops a pending downgrade.
+Free plan switches (and pending downgrades). Paid SKUs are rejected unless `PAYMENTS_ALLOW_CLIENT_PAID_CHANGE=true`. Android paid plans must use Play Billing.
+
+## Public — POST /api/v1/webhooks/google-play
+
+Play Real-time developer notifications. Optional `?token=` = `GOOGLE_PLAY_RTDN_TOKEN`.
+
+## Public — GET /privacy · GET /account-deletion · DELETE /api/v1/account
+
+Privacy policy, web deletion form, and in-app account deletion.
 
 ---
 

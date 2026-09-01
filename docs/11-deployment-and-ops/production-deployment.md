@@ -394,6 +394,9 @@ Requires: `QUEUE_CONNECTION=redis`, `CACHE_STORE=redis`, `REVERB_SCALING_ENABLED
 - [ ] Mobile `API_BASE_URL` points to production HTTPS
 - [ ] Database backups scheduled (daily mysqldump or managed RDS snapshots)
 - [ ] Rate limiting on auth routes (recommended before public launch)
+- [ ] Google Play: upload-signed AAB, Play App Signing, subscription SKUs, RTDN webhook, privacy + account deletion URLs
+- [ ] `PAYMENTS_STUB_SUCCEED=false` and `PAYMENTS_ALLOW_CLIENT_PAID_CHANGE=false` in production
+- [ ] Play reviewer phone/password (not only admin)
 
 ---
 

@@ -32,6 +32,7 @@ class CreateStoragePlanRequest extends FormRequest
             'display_price_cents' => ['sometimes', 'integer', 'min:0'],
             'currency' => ['sometimes', 'string', 'size:3'],
             'billing_period' => ['sometimes', 'string', 'in:monthly,yearly'],
+            'play_product_id' => ['sometimes', 'nullable', 'string', 'max:128'],
             'is_active' => ['sometimes', 'boolean'],
             'sort_order' => ['sometimes', 'integer', 'min:0'],
         ];

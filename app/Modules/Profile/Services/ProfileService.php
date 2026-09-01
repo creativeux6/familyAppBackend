@@ -4,10 +4,15 @@ namespace App\Modules\Profile\Services;
 
 use App\Models\FamilyMember;
 use App\Models\User;
+use App\Modules\Avatars\Services\AvatarService;
 use Illuminate\Validation\ValidationException;
 
 class ProfileService
 {
+    public function __construct(
+        private readonly AvatarService $avatars,
+    ) {}
+
     /** @return array<string, mixed> */
     public function show(User $user): array
     {
@@ -74,6 +79,7 @@ class ProfileService
             'phone' => $user->phone,
             'is_anonymous' => (bool) $user->is_anonymous,
             'marital_status' => $user->marital_status,
+            'avatar' => $this->avatars->userAvatarPayload($user),
         ];
     }
 
@@ -89,6 +95,7 @@ class ProfileService
             'birthplace' => $member->birthplace,
             'gender' => $member->gender,
             'is_living' => $member->is_living,
+            'avatar' => $this->avatars->memberAvatarPayload($member),
         ];
     }
 }

@@ -33,11 +33,20 @@ class MonthlyAccessQuotaTest extends TestCase
         $user = $this->actingAsUser($this->createUserWithFamily());
         $quota = app(StorageQuotaService::class);
         $quota->ensureAccessPeriod($user);
-        $usage = UserStorageUsage::query()->whereNull('closed_at')->first();
-        $usage->storage_used_bytes = 1_000_000;
-        $usage->save();
+        MediaFile::query()->create([
+            'uuid' => (string) \Illuminate\Support\Str::uuid(),
+            'owner_user_id' => $user->id,
+            'uploaded_by_user_id' => $user->id,
+            's3_bucket' => 'local',
+            's3_key' => 'test/quota-'.$user->id,
+            'display_name' => 'photo.bin',
+            'size_bytes' => 1_000_000,
+            'mime_type' => 'application/octet-stream',
+            'checksum_sha256' => hash('sha256', 'photo'),
+            'encryption_version' => 1,
+            'status' => 'active',
+        ]);
         $user->update([
-            'storage_used_bytes' => 1_000_000,
             'storage_read_period_bytes' => 9_000_000_000,
         ]);
 

@@ -31,6 +31,7 @@ class StoragePlanSeeder extends Seeder
                 'is_shared' => false,
                 'max_shared_members' => 0,
                 'sort_order' => 10,
+                'play_product_id' => null,
             ],
             [
                 'name' => 'Personal',
@@ -46,6 +47,7 @@ class StoragePlanSeeder extends Seeder
                 'is_shared' => false,
                 'max_shared_members' => 0,
                 'sort_order' => 20,
+                'play_product_id' => 'tijori_personal',
             ],
             [
                 'name' => 'Plus',
@@ -61,6 +63,7 @@ class StoragePlanSeeder extends Seeder
                 'is_shared' => true,
                 'max_shared_members' => 4,
                 'sort_order' => 30,
+                'play_product_id' => 'tijori_plus',
             ],
             [
                 'name' => 'Pro',
@@ -76,6 +79,7 @@ class StoragePlanSeeder extends Seeder
                 'is_shared' => true,
                 'max_shared_members' => 8,
                 'sort_order' => 40,
+                'play_product_id' => 'tijori_pro',
             ],
         ];
 
@@ -110,6 +114,7 @@ class StoragePlanSeeder extends Seeder
                     'hard_limit_percentage' => 100,
                     'is_active' => true,
                     'sort_order' => $data['sort_order'],
+                    'play_product_id' => $data['play_product_id'] ?? null,
                 ]
             );
 

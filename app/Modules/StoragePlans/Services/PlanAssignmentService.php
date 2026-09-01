@@ -97,7 +97,8 @@ class PlanAssignmentService
         }
 
         if ($this->isUpgrade($from, $plan)) {
-            if (! $this->billingService->charge($user, $plan, 'upgrade')) {
+            $shouldCharge = $source !== 'google_play';
+            if ($shouldCharge && ! $this->billingService->charge($user, $plan, 'upgrade')) {
                 throw ValidationException::withMessages([
                     'payment' => ['Payment failed. Upgrade was not applied.'],
                 ]);
@@ -136,6 +137,87 @@ class PlanAssignmentService
         ]);
 
         return $current->fresh(['plan', 'pendingPlan']);
+    }
+
+    /**
+     * Apply a plan immediately (upgrade or downgrade). Used after Google Play
+     * has already billed, and when a Play subscription expires.
+     *
+     * @param  array{play_purchase_token?: ?string, play_product_id?: ?string, play_auto_renewing?: bool, ends_at?: ?\DateTimeInterface}  $play
+     */
+    public function applyImmediatePlan(
+        User $user,
+        StoragePlan $plan,
+        string $source = 'google_play',
+        array $play = [],
+    ): UserPlanAssignment {
+        if (! $plan->is_active && $plan->slug !== 'free') {
+            throw ValidationException::withMessages([
+                'storage_plan_uuid' => ['Cannot assign an inactive plan.'],
+            ]);
+        }
+
+        $this->ensureDefaultFreePlan($user);
+        $current = $this->activeAssignment($user);
+
+        $wasShared = false;
+        if ($current) {
+            $current->loadMissing('plan');
+            $wasShared = (bool) $current->plan?->is_shared;
+        }
+        $playToken = array_key_exists('play_purchase_token', $play)
+            ? $play['play_purchase_token']
+            : $current?->play_purchase_token;
+        $playProduct = array_key_exists('play_product_id', $play)
+            ? $play['play_product_id']
+            : ($plan->play_product_id ?: $current?->play_product_id);
+        $autoRenew = array_key_exists('play_auto_renewing', $play)
+            ? (bool) $play['play_auto_renewing']
+            : (bool) $current?->play_auto_renewing;
+        $endsAt = $play['ends_at'] ?? null;
+
+        if (! $current) {
+            $assignment = $this->assign($user, $plan, $user, $source, null, $endsAt instanceof \DateTimeInterface ? $endsAt : null);
+            $assignment->update([
+                'play_purchase_token' => $playToken,
+                'play_product_id' => $playProduct,
+                'play_auto_renewing' => $autoRenew,
+                'billing_status' => UserPlanAssignment::STATUS_ACTIVE,
+            ]);
+
+            return $assignment->fresh('plan');
+        }
+
+        $current->update([
+            'storage_plan_uuid' => $plan->uuid,
+            'source' => $source,
+            'assigned_by_user_id' => $user->id,
+            'pending_storage_plan_uuid' => null,
+            'pending_change_at' => null,
+            'billing_status' => UserPlanAssignment::STATUS_ACTIVE,
+            'payment_retry_count' => 0,
+            'next_retry_at' => null,
+            'last_payment_failed_at' => null,
+            'play_purchase_token' => $playToken,
+            'play_product_id' => $playProduct,
+            'play_auto_renewing' => $autoRenew,
+            'ends_at' => $endsAt instanceof \DateTimeInterface
+                ? $endsAt
+                : $current->ends_at,
+        ]);
+        $current = $current->fresh('plan');
+
+        $usage = $this->poolService->ensureOpenUsage($current);
+        $usage->applyPlanSnapshot($plan);
+        $usage->save();
+
+        if ($wasShared && ! $plan->is_shared) {
+            $this->poolService->resetRosterToOwner($current, $usage);
+        } elseif (! $wasShared && $plan->is_shared) {
+            $this->poolService->resetRosterToOwner($current, $usage);
+        }
+
+        return $current;
     }
 
     public function cancelPendingChange(User $user): UserPlanAssignment
@@ -214,7 +296,18 @@ class PlanAssignmentService
         }
 
         $user = $assignment->user;
-        if ($plan->isPaid() && $user) {
+        if ($assignment->source === 'google_play') {
+            if (! (bool) $assignment->play_auto_renewing) {
+                $freePlan = $this->ensureFreePlanRow();
+                if ($user) {
+                    return $this->applyImmediatePlan($user, $freePlan, 'system_default', [
+                        'play_purchase_token' => null,
+                        'play_product_id' => null,
+                        'play_auto_renewing' => false,
+                    ]);
+                }
+            }
+        } elseif ($plan->isPaid() && $user) {
             if (! $this->billingService->charge($user, $plan, 'renewal')) {
                 $this->billingService->markPastDue($assignment);
             } else {

@@ -290,7 +290,7 @@ class FamilyTreeService
         $member = FamilyMember::query()
             ->where('uuid', $memberUuid)
             ->where('family_uuid', $viewerMember->family_uuid)
-            ->with('user:id,uuid,is_anonymous')
+            ->with(['user' => fn ($query) => $query->select(User::FAMILY_GRAPH_COLUMNS)])
             ->first();
 
         if (! $member) {

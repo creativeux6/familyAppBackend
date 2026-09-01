@@ -20,6 +20,9 @@ class UserPlanAssignment extends Model
         'pending_storage_plan_uuid',
         'pending_change_at',
         'source',
+        'play_purchase_token',
+        'play_product_id',
+        'play_auto_renewing',
         'assigned_by_user_id',
         'starts_at',
         'ends_at',
@@ -39,6 +42,7 @@ class UserPlanAssignment extends Model
             'last_payment_failed_at' => 'datetime',
             'next_retry_at' => 'datetime',
             'is_active' => 'boolean',
+            'play_auto_renewing' => 'boolean',
             'payment_retry_count' => 'integer',
         ];
     }

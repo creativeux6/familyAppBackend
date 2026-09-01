@@ -5,6 +5,7 @@ namespace App\Modules\StoragePlans\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\StoragePlans\Services\PlanAssignmentService;
 use App\Modules\StoragePlans\Services\PlanBillingService;
+use App\Modules\StoragePlans\Services\PlayBillingService;
 use App\Modules\StoragePlans\Services\StoragePlanService;
 use App\Modules\StoragePlans\Services\StoragePoolService;
 use App\Modules\StoragePlans\Services\StorageQuotaService;
@@ -75,13 +76,37 @@ class StorageQuotaController extends Controller
         ]);
     }
 
-    #[OA\Post(path: '/storage/plan-change', operationId: 'storageChangePlan', summary: 'Request upgrade now or downgrade next cycle', tags: ['StoragePlans'], security: [['bearerAuth' => []]], responses: [new OA\Response(response: 200, description: 'Changed')])]
+    #[OA\Post(path: '/storage/play/verify', operationId: 'storagePlayVerify', summary: 'Verify a Google Play purchase and apply the paid plan', tags: ['StoragePlans'], security: [['bearerAuth' => []]], responses: [new OA\Response(response: 200, description: 'Verified')])]
+    public function verifyPlayPurchase(Request $request, PlayBillingService $playBilling): JsonResponse
+    {
+        $data = $request->validate([
+            'purchase_token' => ['required', 'string', 'max:2048'],
+            'product_id' => ['required', 'string', 'max:128'],
+            'storage_plan_uuid' => ['sometimes', 'nullable', 'uuid'],
+        ]);
+
+        $assignment = $playBilling->verifyAndApply(
+            $request->user(),
+            $data['purchase_token'],
+            $data['product_id'],
+            $data['storage_plan_uuid'] ?? null,
+        );
+
+        return response()->json($assignment);
+    }
+
+    #[OA\Post(path: '/storage/plan-change', operationId: 'storageChangePlan', summary: 'Request a free plan switch or a pending downgrade. Paid Android plans use POST /storage/play/verify.', tags: ['StoragePlans'], security: [['bearerAuth' => []]], responses: [new OA\Response(response: 200, description: 'Changed')])]
     public function changePlan(Request $request): JsonResponse
     {
         $data = $request->validate([
             'storage_plan_uuid' => ['required', 'uuid'],
         ]);
         $plan = $this->planService->requirePlan($data['storage_plan_uuid']);
+        if ($plan->isPaid() && ! config('payments.allow_client_paid_change')) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'payment' => ['Paid plans must be purchased through Google Play Billing.'],
+            ]);
+        }
         $assignment = $this->assignmentService->changePlan($request->user(), $plan, $request->user(), 'payment');
 
         return response()->json($this->assignmentService->formatAssignment($assignment));

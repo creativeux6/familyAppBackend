@@ -2,7 +2,9 @@
 
 namespace App\Modules\StoragePlans\Services;
 
+use App\Models\FamilyMember;
 use App\Models\MediaFile;
+use App\Models\MediaLibraryItem;
 use App\Models\StorageUsageLog;
 use App\Models\User;
 use App\Models\UserPlanAssignment;
@@ -60,7 +62,7 @@ class StorageQuotaService
 
     public function storedBytes(User $user): int
     {
-        return (int) $this->poolContext($user)->usage->storage_used_bytes;
+        return $this->syncStoredFromInventory($this->poolContext($user));
     }
 
     public function ownedBytes(User $user): int
@@ -153,11 +155,12 @@ class StorageQuotaService
     public function summary(User $user): array
     {
         $context = $this->poolContext($user);
+        $stored = $this->syncStoredFromInventory($context);
         $assignment = $context->assignment;
-        $usage = $context->usage;
+        $usage = $context->usage->fresh() ?? $context->usage;
         $quota = max(1, (int) $usage->storage_limit_bytes);
-        $stored = (int) $usage->storage_used_bytes;
         $plan = $assignment->plan;
+        $assignment->loadMissing('pendingPlan');
 
         return [
             'quota_bytes' => $quota,
@@ -168,12 +171,16 @@ class StorageQuotaService
             'over_quota' => $stored >= $quota,
             'using_default_quota' => $assignment->source === 'system_default',
             'plan' => $plan ? StoragePlanService::formatPlan($plan) : null,
+            'pending_plan' => $assignment->pendingPlan
+                ? StoragePlanService::formatPlan($assignment->pendingPlan)
+                : null,
             'assignment' => [
                 'id' => $assignment->id,
                 'starts_at' => $assignment->starts_at?->toIso8601String(),
                 'ends_at' => $assignment->ends_at?->toIso8601String(),
                 'source' => $assignment->source,
                 'billing_status' => $assignment->billing_status,
+                'pending_storage_plan_uuid' => $assignment->pending_storage_plan_uuid,
             ],
         ];
     }
@@ -182,8 +189,9 @@ class StorageQuotaService
     public function adminSummary(User $user): array
     {
         $context = $this->poolContext($user);
+        $this->syncStoredFromInventory($context);
         $assignment = $context->assignment->loadMissing(['plan', 'pendingPlan', 'user']);
-        $usage = $context->usage;
+        $usage = $context->usage->fresh() ?? $context->usage;
         $usage->syncMonthlyAccess();
         $plan = $assignment->plan;
         $costs = $this->costEstimator->estimate($usage);
@@ -254,6 +262,108 @@ class StorageQuotaService
                 ->values()
                 ->all(),
         ]);
+    }
+
+    /**
+     * Pool stored bytes from live inventory (media + thumbs + avatars +
+     * co-owner charges), then persist so meters stay aligned with the bar.
+     */
+    public function syncStoredFromInventory(StoragePoolContext $context): int
+    {
+        $usage = $context->usage;
+        $roster = $this->poolService->roster($context->assignment, $usage);
+        $members = $roster->map(fn ($row) => $row->user)->filter();
+        if ($members->isEmpty()) {
+            $members = collect([$context->actor]);
+        }
+
+        $poolTotal = 0;
+        foreach ($members as $member) {
+            /** @var User $member */
+            $owned = $this->computeOwnedStoredBytes($member);
+            $poolTotal += $owned;
+            if ((int) $member->storage_used_bytes !== $owned) {
+                $member->update(['storage_used_bytes' => $owned]);
+            }
+        }
+
+        $usage->storage_used_bytes = $poolTotal;
+        $usage->syncMonthlyAccess();
+        if ($usage->isDirty()) {
+            $usage->save();
+        }
+
+        return $poolTotal;
+    }
+
+    public function computeOwnedStoredBytes(User $user): int
+    {
+        $user = User::query()->findOrFail($user->id);
+        $bytes = 0;
+        $ownedUuids = [];
+
+        $files = MediaFile::query()
+            ->where('owner_user_id', $user->id)
+            ->where('status', 'active')
+            ->get(['uuid', 'size_bytes', 'thumbnail_size_bytes', 'metadata']);
+
+        foreach ($files as $file) {
+            $ownedUuids[] = $file->uuid;
+            if ($this->isChatCoOwnerMedia($file)) {
+                continue;
+            }
+            $bytes += max(0, (int) $file->size_bytes)
+                + max(0, (int) $file->thumbnail_size_bytes);
+        }
+
+        $bytes += max(0, (int) $user->avatar_master_bytes)
+            + max(0, (int) $user->avatar_thumb_bytes);
+
+        $memberAvatars = FamilyMember::query()
+            ->where('avatar_updated_by_user_id', $user->id)
+            ->whereNull('user_id')
+            ->get(['avatar_master_bytes', 'avatar_thumb_bytes']);
+        foreach ($memberAvatars as $member) {
+            $bytes += max(0, (int) $member->avatar_master_bytes)
+                + max(0, (int) $member->avatar_thumb_bytes);
+        }
+
+        $items = MediaLibraryItem::query()
+            ->where('user_id', $user->id)
+            ->whereNull('removed_at')
+            ->where(function ($query) {
+                $query->where('stream_bytes_charged', '>', 0)
+                    ->orWhereNotNull('quota_charged_at');
+            })
+            ->with('mediaFile')
+            ->get();
+
+        foreach ($items as $item) {
+            $media = $item->mediaFile;
+            if (! $media || $media->status !== 'active') {
+                continue;
+            }
+            if (in_array($media->uuid, $ownedUuids, true) && ! $this->isChatCoOwnerMedia($media)) {
+                continue;
+            }
+            $charged = (int) $item->stream_bytes_charged;
+            if ($charged <= 0) {
+                $charged = (int) $media->size_bytes;
+            }
+            $bytes += min(max(0, $charged), max(0, (int) $media->size_bytes));
+        }
+
+        return $bytes;
+    }
+
+    private function isChatCoOwnerMedia(MediaFile $media): bool
+    {
+        $metadata = is_array($media->metadata) ? $media->metadata : [];
+        if (($metadata['source'] ?? null) !== 'chat') {
+            return false;
+        }
+
+        return ($metadata['storage_mode'] ?? 'co_owner') === 'co_owner';
     }
 
     public function assertCanStore(User $user, int $sizeBytes): void

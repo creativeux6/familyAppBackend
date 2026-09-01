@@ -5,6 +5,7 @@ namespace App\Repositories\FamilyGraph;
 use App\Contracts\FamilyGraph\FamilyGraphRepositoryInterface;
 use App\Models\FamilyMember;
 use App\Models\RelationshipEdge;
+use App\Models\User;
 use App\Modules\FamilyTree\Enums\TreeViewMode;
 use App\Modules\FamilyTree\Services\KinshipResolverService;
 use Illuminate\Support\Collection;
@@ -19,7 +20,7 @@ class MysqlFamilyGraphRepository implements FamilyGraphRepositoryInterface
     {
         $members = FamilyMember::query()
             ->where('family_uuid', $familyUuid)
-            ->with('user:id,uuid,is_anonymous')
+            ->with(['user' => fn ($query) => $query->select(User::FAMILY_GRAPH_COLUMNS)])
             ->get();
 
         $memberUuids = $members->pluck('uuid');

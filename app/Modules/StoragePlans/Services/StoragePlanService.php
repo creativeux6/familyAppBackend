@@ -166,7 +166,7 @@ class StoragePlanService
             'billing_period' => $period,
         ];
 
-        foreach (['name', 'description', 'slug', 'display_price_cents', 'currency', 'is_active', 'sort_order'] as $key) {
+        foreach (['name', 'description', 'slug', 'play_product_id', 'display_price_cents', 'currency', 'is_active', 'sort_order'] as $key) {
             if (array_key_exists($key, $data)) {
                 $payload[$key] = $data[$key];
             }
@@ -208,6 +208,7 @@ class StoragePlanService
             'currency' => $plan->currency,
             'billing_period' => $period,
             'billing_period_label' => $period === PlanAssignmentService::PERIOD_YEARLY ? 'Yearly' : 'Monthly',
+            'play_product_id' => $plan->play_product_id,
             'is_active' => $plan->is_active,
             'sort_order' => $plan->sort_order,
         ];

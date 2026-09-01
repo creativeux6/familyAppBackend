@@ -14,6 +14,8 @@ use App\Modules\Events\Services\NullEventManagementService;
 use App\Modules\FamilyTree\Events\FamilyMemberJoined;
 use App\Modules\Groups\Events\MessageSent;
 use App\Modules\Media\Events\MediaSharedWithUser;
+use App\Modules\StoragePlans\Contracts\GooglePlayClientInterface;
+use App\Modules\StoragePlans\Services\GooglePlayDeveloperClient;
 use App\Modules\StoragePlans\Services\ManualPlanGateway;
 use App\Repositories\FamilyGraph\MysqlFamilyGraphRepository;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -38,6 +40,7 @@ class AppServiceProvider extends ServiceProvider
         });
 
         $this->app->bind(PaymentGatewayInterface::class, ManualPlanGateway::class);
+        $this->app->bind(GooglePlayClientInterface::class, GooglePlayDeveloperClient::class);
 
         $this->app->bind(EventManagementServiceInterface::class, NullEventManagementService::class);
     }

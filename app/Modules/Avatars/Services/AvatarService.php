@@ -37,6 +37,10 @@ class AvatarService
     public function memberAvatarPayload(FamilyMember $member): array
     {
         $member->loadMissing('user');
+        if ($member->user && ! array_key_exists('avatar_thumb_key', $member->user->getAttributes())) {
+            $member->unsetRelation('user');
+            $member->load('user');
+        }
 
         if ($member->user && filled($member->user->avatar_thumb_key)) {
             return [

@@ -49,6 +49,19 @@ class UserSeeder extends Seeder
         foreach ($devUsers as $data) {
             $this->command?->line("  {$data['phone']} / {$data['password']} ({$data['display_name']})");
         }
+
+        $reviewerPhone = env('PLAY_REVIEWER_PHONE');
+        $reviewerPassword = env('PLAY_REVIEWER_PASSWORD');
+        if (is_string($reviewerPhone) && $reviewerPhone !== '' && is_string($reviewerPassword) && $reviewerPassword !== '') {
+            $reviewerEmail = env('PLAY_REVIEWER_EMAIL');
+            $this->seedUser(
+                displayName: (string) env('PLAY_REVIEWER_NAME', 'Play Reviewer'),
+                phone: $reviewerPhone,
+                password: $reviewerPassword,
+                email: is_string($reviewerEmail) && $reviewerEmail !== '' ? $reviewerEmail : null,
+            );
+            $this->command?->info("Seeded Play reviewer: {$reviewerPhone}");
+        }
     }
 
     private function seedUser(string $displayName, string $phone, string $password, ?string $email = null): User

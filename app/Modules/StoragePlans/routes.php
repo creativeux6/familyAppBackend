@@ -1,8 +1,11 @@
 <?php
 
 use App\Modules\StoragePlans\Http\Controllers\AdminStoragePlanController;
+use App\Modules\StoragePlans\Http\Controllers\GooglePlayWebhookController;
 use App\Modules\StoragePlans\Http\Controllers\StorageQuotaController;
 use Illuminate\Support\Facades\Route;
+
+Route::post('/webhooks/google-play', GooglePlayWebhookController::class);
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('storage')->group(function () {
@@ -12,6 +15,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/members', [StorageQuotaController::class, 'addMember']);
         Route::get('/billing', [StorageQuotaController::class, 'billing']);
         Route::post('/payments/retry', [StorageQuotaController::class, 'retryPayment']);
+        Route::post('/play/verify', [StorageQuotaController::class, 'verifyPlayPurchase']);
         Route::post('/plan-change', [StorageQuotaController::class, 'changePlan']);
         Route::post('/plan-change/cancel', [StorageQuotaController::class, 'cancelPlanChange']);
     });

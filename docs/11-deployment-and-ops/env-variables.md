@@ -97,6 +97,25 @@ Legacy (not recommended): `FIREBASE_CREDENTIALS_PATH` — path to downloaded JSO
 
 Requires `php artisan queue:work` for push delivery. See [push-notifications-setup.md](../10-flutter-mobile/push-notifications-setup.md).
 
+## Google Play Billing
+
+| Variable | Example | Description |
+|----------|---------|-------------|
+| `GOOGLE_PLAY_PACKAGE` | `com.familyapp.family_app` | Android application id |
+| `GOOGLE_PLAY_CLIENT_EMAIL` | Play API service account | From Play Console API access |
+| `GOOGLE_PLAY_PRIVATE_KEY` | PEM | Use `\n` for newlines |
+| `GOOGLE_PLAY_CREDENTIALS_PATH` | `/path/to.json` | Optional JSON file instead of env PEM |
+| `GOOGLE_PLAY_RTDN_TOKEN` | random secret | Query token on `/api/v1/webhooks/google-play` |
+| `GOOGLE_PLAY_SKU_PERSONAL` | `tijori_personal` | Play subscription product id |
+| `GOOGLE_PLAY_SKU_PLUS` | `tijori_plus` | |
+| `GOOGLE_PLAY_SKU_PRO` | `tijori_pro` | |
+| `PAYMENTS_STUB_SUCCEED` | `true` local / `false` production | Stub gateway for admin/local only |
+| `PAYMENTS_ALLOW_CLIENT_PAID_CHANGE` | `false` | Must stay false in production |
+| `PLAY_REVIEWER_PHONE` | E.164 | Optional seeded Play reviewer login |
+| `PLAY_REVIEWER_PASSWORD` | secret | Optional; never commit |
+
+See [google-play-listing.md](./google-play-listing.md).
+
 ## Feature flags
 
 | Variable | Example | Description |
