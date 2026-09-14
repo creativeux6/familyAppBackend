@@ -52,7 +52,7 @@ Group / content keys
 
 ## Password change / reset (follow carefully)
 
-- **Authenticated password change** (future): decrypt backup with old password → re-encrypt with new password → store. Do not generate new identity keys.
+- **Authenticated password change**: decrypt backup with old password → re-encrypt with new password → store. Do not generate new identity keys. Implemented as `POST /api/v1/auth/change-password` + client `createKeyBackup` with the new password after a successful change.
 - **Forgot-password reset** without the old password cannot re-wrap the existing backup. Prefer requiring a recovery step, or warn that E2E access may be lost if no alternate recovery exists. Never silently rotate keys after reset without that warning.
 
 ## Agent / PR checklist

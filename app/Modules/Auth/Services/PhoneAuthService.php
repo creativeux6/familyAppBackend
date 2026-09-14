@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Laravel\Sanctum\PersonalAccessToken;
 use Spatie\Permission\Models\Role;
 
 class PhoneAuthService
@@ -104,15 +105,33 @@ class PhoneAuthService
 
     public function logout(User $user): void
     {
+        $token = $user->currentAccessToken();
+        if ($token instanceof PersonalAccessToken) {
+            $token->delete();
+
+            return;
+        }
+
+        // Cookie/session auth (no PAT): revoke API tokens for this user.
         $user->tokens()->delete();
     }
 
     public function refresh(User $user, string $tokenName = 'mobile'): array
     {
-        $user->tokens()->delete();
-        $token = $user->createToken($tokenName)->plainTextToken;
+        // Issue the new token first, then revoke only the current one.
+        // Deleting first left clients stranded if the response never arrived.
+        $currentToken = $user->currentAccessToken();
+        $currentTokenId = $currentToken instanceof PersonalAccessToken
+            ? $currentToken->id
+            : null;
 
-        return $this->authResponse($user->fresh(), $token, 'refreshed');
+        $plainTextToken = $user->createToken($tokenName)->plainTextToken;
+
+        if ($currentTokenId !== null) {
+            $user->tokens()->whereKey($currentTokenId)->delete();
+        }
+
+        return $this->authResponse($user->fresh(), $plainTextToken, 'refreshed');
     }
 
     /** @return array<string, mixed> */
@@ -199,6 +218,30 @@ class PhoneAuthService
         $user->tokens()->delete();
 
         return ['message' => 'Password has been reset. You can log in with your new password.'];
+    }
+
+    public function changePassword(User $user, string $currentPassword, string $newPassword): array
+    {
+        if (! Hash::check($currentPassword, $user->password)) {
+            throw ValidationException::withMessages([
+                'current_password' => ['Current password is incorrect.'],
+            ]);
+        }
+
+        $user->forceFill([
+            'password' => $newPassword,
+        ])->save();
+
+        // Keep the current session; revoke other devices.
+        $currentToken = $user->currentAccessToken();
+        $user->tokens()
+            ->when(
+                $currentToken instanceof PersonalAccessToken,
+                fn ($query) => $query->where('id', '!=', $currentToken->id),
+            )
+            ->delete();
+
+        return ['message' => 'Password updated.'];
     }
 
     private function normalizePhone(string $phone): string

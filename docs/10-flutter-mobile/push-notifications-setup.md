@@ -20,7 +20,8 @@ Paid alternatives (OneSignal, Pusher Beams) are **v2 only** — see [paid-and-v2
 
 1. Go to [Firebase Console](https://console.firebase.google.com/) → **Add project**.
 2. Enable **Cloud Messaging** (enabled by default).
-3. Add an **Android app** with package name `com.familyapp.family_app`.
+3. Add an **Android app** with package name `com.prolampx.tijori`.
+   If you previously registered `com.familyapp.family_app`, add a **new** Android app for `com.prolampx.tijori` and replace `google-services.json` (do not only edit the package name by hand).
 4. Download `google-services.json` → place in `mobile/android/app/google-services.json`.
 5. (Optional iOS) Add iOS app, download `GoogleService-Info.plist` → `mobile/ios/Runner/`.
 6. Project settings → **Service accounts** → **Generate new private key** (downloads JSON once).

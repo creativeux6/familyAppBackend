@@ -1,6 +1,6 @@
-# Google Play listing (Tijori)
+# Google Play listing (Tijori Cloud)
 
-Fill Play Console with these answers. Package: `com.familyapp.family_app`. App name: **Tijori** (≤30 characters).
+Fill Play Console with these answers. Package: `com.prolampx.tijori`. App name: **Tijori Cloud** (≤30 characters).
 
 Production API: `https://app.prolampx.com/api/v1`. Privacy: `https://app.prolampx.com/privacy`. Account deletion: `https://app.prolampx.com/account-deletion`.
 
@@ -16,21 +16,82 @@ Production API: `https://app.prolampx.com/api/v1`. Privacy: `https://app.prolamp
 5. Create a Google Cloud **service account** with Financial / Android Publisher access, link it in Play Console → API access, put `GOOGLE_PLAY_CLIENT_EMAIL` + `GOOGLE_PLAY_PRIVATE_KEY` (or `GOOGLE_PLAY_CREDENTIALS_PATH`) on the server.
 6. Real-time developer notifications: Pub/Sub push to `https://app.prolampx.com/api/v1/webhooks/google-play?token=YOUR_GOOGLE_PLAY_RTDN_TOKEN`.
 7. Production `.env`: `PAYMENTS_STUB_SUCCEED=false`, `PAYMENTS_ALLOW_CLIENT_PAID_CHANGE=false`.
-8. Build: `./mobile/scripts/build_release.sh appbundle`.
+8. Build: `./build_play.sh` (auto-bumps version code).
 9. New personal developer accounts usually need **closed testing** (commonly 12 testers / 14 days) before production.
 
-## Store listing
+## Store listing (copy into Play Console)
 
-| Field | Value |
-| --- | --- |
-| App name | Tijori |
-| Short description | Private family vault for photos, chat, and your family tree. |
-| Full description | Tijori is a private family vault by Prolampx. Keep photos, videos, and files encrypted, chat with relatives, and grow a shared family tree. Optional contacts access finds people already on Tijori (numbers are hashed on device). Paid storage is billed through Google Play. |
-| Category | Social (or Lifestyle). **Not** a kids app. |
-| Content rating | Complete the questionnaire: **not designed for children**. |
-| Privacy policy | https://app.prolampx.com/privacy |
-| Account deletion | https://app.prolampx.com/account-deletion (also Profile → Delete account in the app) |
-| Graphics | High-res icon (already Tijori). Feature graphic: `mobile/store/feature_graphic.png` (1024×500). 2–8 phone screenshots (tree, chat, gallery, plans). |
+Google Play has **no separate keywords field**. Search uses **App name + short description + full description**. Paste below into **Grow users → Store presence → Main store listing**.
+
+| Field | Limit | Value |
+| --- | --- | --- |
+| App name | 30 | `Tijori Cloud` |
+| Short description | 80 | see below |
+| Full description | 4000 | see below |
+| App category | — | **Productivity** (primary). Tags / secondary: Social or Communication if offered. **Not** a kids app. |
+| Content rating | — | Questionnaire: **not designed for children**. |
+| Privacy policy | — | https://app.prolampx.com/privacy |
+| Account deletion | — | https://app.prolampx.com/account-deletion (also Profile → Delete account) |
+| Contact email / website | — | Your Prolampx support email + https://app.prolampx.com |
+| Graphics | — | High-res icon (from app logo). Feature graphic: `mobile/store/feature_graphic.png` (1024×500). Phone screenshots: gallery/storage, share/chat, family tree, plans (2–8 shots). |
+
+### Short description (≤80 characters) — paste exactly
+
+```text
+Private cloud storage to save, share with anyone, chat, and build your tree.
+```
+
+(75 characters.)
+
+### Full description — paste exactly
+
+```text
+Tijori Cloud by Prolampx is private cloud storage for everyone — friends, family, teammates, or any group you choose.
+
+Save photos, videos, and files in one secure place. Share storage with the people you invite. Chat in groups. Optionally build a family tree — all in one app.
+
+CLOUD STORAGE
+• Upload photos, videos, documents, and other files
+• Private media library with optional storage plans
+• Access your files from your phone whenever you need them
+
+SHAREABLE STORAGE
+• Share albums, folders, and media with anyone you invite
+• Control who can see what you upload
+• Keep important files and memories in one shared space
+
+CHAT
+• Group chats for friends, family, or any circle
+• Voice notes and media in conversation
+• Stay connected without mixing private chats into public social apps
+
+CONNECTIONS & FAMILY TREE
+• Connect with people already on Tijori Cloud
+• Optional family tree to organize relatives when you need it
+• Invite friends or family on your terms
+
+WHO IT’S FOR
+Anyone who wants private storage, easy sharing, and chat — with friends, family, or both — without ads and without selling your data.
+
+Privacy policy: https://app.prolampx.com/privacy
+Delete your account anytime in the app (Profile → Delete account) or at https://app.prolampx.com/account-deletion
+
+Paid storage upgrades are billed through Google Play.
+```
+
+### Search phrases covered (naturally, not stuffed)
+
+Ideas for screenshot captions / feature graphic labels: **cloud storage**, **private storage**, **share files**, **shared storage**, **group chat**, **secure cloud**, **photo storage**, **family tree** (optional feature).
+
+Do **not** paste a comma-separated keyword list into the description — Play can demote keyword stuffing.
+
+### Screenshot captions (optional, under each phone shot)
+
+1. Private cloud storage for your photos & files  
+2. Share storage with friends or family  
+3. Group chat for your circle  
+4. Optional family tree when you need it  
+5. Choose a storage plan that fits you  
 
 ## Data safety
 
@@ -39,8 +100,8 @@ Declare collection for **app functionality** only. No ads, no sale of data, no a
 | Data type | Collected | Shared | Required | Purpose |
 | --- | --- | --- | --- | --- |
 | Phone number | Yes | No | Yes (account) | Account |
-| Name | Yes | With connected family | Optional display | App functionality |
-| Contacts | Optional | No (hashes only) | No | Find family on Tijori |
+| Name | Yes | With people you connect with | Optional display | App functionality |
+| Contacts | Optional | No (hashes only) | No | Find people already on Tijori Cloud |
 | Photos / videos / files | Yes, only what the user picks | With people they share with | Optional | App functionality |
 | Audio (voice notes) | Yes, when they record | Chat members | Optional | App functionality |
 | Device or other IDs (FCM token) | Yes | No | Optional (notifications) | App functionality |

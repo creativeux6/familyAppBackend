@@ -18,5 +18,7 @@ Route::prefix('auth')->group(function () {
         Route::get('/me', [SessionController::class, 'me']);
         Route::post('/logout', [SessionController::class, 'logout']);
         Route::post('/refresh', [SessionController::class, 'refresh']);
+        Route::post('/change-password', [AuthController::class, 'changePassword'])
+            ->middleware('throttle:auth-password');
     });
 });

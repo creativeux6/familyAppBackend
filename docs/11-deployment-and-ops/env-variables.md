@@ -101,7 +101,7 @@ Requires `php artisan queue:work` for push delivery. See [push-notifications-set
 
 | Variable | Example | Description |
 |----------|---------|-------------|
-| `GOOGLE_PLAY_PACKAGE` | `com.familyapp.family_app` | Android application id |
+| `GOOGLE_PLAY_PACKAGE` | `com.prolampx.tijori` | Android application id |
 | `GOOGLE_PLAY_CLIENT_EMAIL` | Play API service account | From Play Console API access |
 | `GOOGLE_PLAY_PRIVATE_KEY` | PEM | Use `\n` for newlines |
 | `GOOGLE_PLAY_CREDENTIALS_PATH` | `/path/to.json` | Optional JSON file instead of env PEM |

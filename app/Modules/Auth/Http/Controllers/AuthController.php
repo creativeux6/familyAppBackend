@@ -3,6 +3,7 @@
 namespace App\Modules\Auth\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Auth\Http\Requests\ChangePasswordRequest;
 use App\Modules\Auth\Http\Requests\ForgotPasswordRequest;
 use App\Modules\Auth\Http\Requests\LoginRequest;
 use App\Modules\Auth\Http\Requests\RegisterRequest;
@@ -123,6 +124,17 @@ class AuthController extends Controller
             $this->phoneAuthService->resetPassword(
                 $request->validated('phone'),
                 $request->validated('token'),
+                $request->validated('password'),
+            )
+        );
+    }
+
+    public function changePassword(ChangePasswordRequest $request): JsonResponse
+    {
+        return response()->json(
+            $this->phoneAuthService->changePassword(
+                $request->user(),
+                $request->validated('current_password'),
                 $request->validated('password'),
             )
         );

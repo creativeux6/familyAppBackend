@@ -1,7 +1,7 @@
 <?php
 
 return [
-    'package_name' => env('GOOGLE_PLAY_PACKAGE', 'com.familyapp.family_app'),
+    'package_name' => env('GOOGLE_PLAY_PACKAGE', 'com.prolampx.tijori'),
     'client_email' => env('GOOGLE_PLAY_CLIENT_EMAIL'),
     'private_key' => env('GOOGLE_PLAY_PRIVATE_KEY'),
     'credentials_path' => env('GOOGLE_PLAY_CREDENTIALS_PATH'),
