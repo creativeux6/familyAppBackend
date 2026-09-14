@@ -4,7 +4,9 @@ namespace App\Modules\Admin\Services;
 
 use App\Models\SystemErrorLog;
 use App\Models\User;
+use App\Support\AdminDiagnostic;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 
 class SystemErrorLogService
@@ -67,9 +69,9 @@ class SystemErrorLogService
         ?string $ip = null,
         ?string $requestId = null,
         ?int $durationMs = null,
+        ?string $responseBody = null,
     ): void {
         try {
-            $suffix = $durationMs !== null ? " ({$durationMs}ms)" : '';
             SystemErrorLog::query()->create([
                 'uuid' => (string) Str::uuid(),
                 'user_id' => $user?->id,
@@ -77,8 +79,8 @@ class SystemErrorLogService
                 'path' => $path ? substr($path, 0, 512) : null,
                 'status_code' => $statusCode,
                 'exception_class' => class_basename($e),
-                'message' => Str::limit(($e->getMessage() ?: get_class($e)).$suffix, 2000),
-                'trace' => Str::limit($e->getTraceAsString(), 8000),
+                'message' => Str::limit($this->buildExceptionMessage($e, $durationMs), 2000),
+                'trace' => Str::limit($this->buildExceptionTrace($e, $responseBody), 8000),
                 'request_id' => $requestId,
                 'ip_address' => $ip,
                 'occurred_at' => now(),
@@ -97,10 +99,33 @@ class SystemErrorLogService
         ?string $requestId = null,
         ?int $durationMs = null,
         ?string $responseBody = null,
+        ?Throwable $exception = null,
     ): void {
+        if ($exception instanceof Throwable && $statusCode >= 400) {
+            $this->recordException(
+                $exception,
+                $user,
+                $method,
+                $path,
+                $statusCode,
+                $ip,
+                $requestId,
+                $durationMs,
+                $responseBody,
+            );
+
+            return;
+        }
+
         try {
-            $label = $statusCode >= 400 ? 'HTTP error' : 'OK';
             $suffix = $durationMs !== null ? " ({$durationMs}ms)" : '';
+            $summary = $this->summarizeResponseBody($responseBody);
+            $label = $statusCode >= 400
+                ? "HTTP {$statusCode} error"
+                : "HTTP {$statusCode} OK";
+            $message = $summary !== null
+                ? "{$label}{$suffix}: {$summary}"
+                : "{$label}{$suffix}";
 
             SystemErrorLog::query()->create([
                 'uuid' => (string) Str::uuid(),
@@ -109,7 +134,7 @@ class SystemErrorLogService
                 'path' => $path ? substr($path, 0, 512) : null,
                 'status_code' => $statusCode,
                 'exception_class' => 'HttpResponse',
-                'message' => Str::limit("{$label}{$suffix}", 2000),
+                'message' => Str::limit($message, 2000),
                 'trace' => $responseBody ? Str::limit($responseBody, 8000) : null,
                 'request_id' => $requestId,
                 'ip_address' => $ip,
@@ -118,6 +143,103 @@ class SystemErrorLogService
         } catch (Throwable) {
             // Never break the response.
         }
+    }
+
+    private function buildExceptionMessage(Throwable $e, ?int $durationMs): string
+    {
+        $suffix = $durationMs !== null ? " ({$durationMs}ms)" : '';
+        $diag = AdminDiagnostic::for($e);
+
+        if ($diag !== null) {
+            return "[{$diag['error_code']}] {$diag['message']}{$suffix}";
+        }
+
+        if ($e instanceof ValidationException) {
+            $flat = collect($e->errors())
+                ->flatMap(fn ($messages, $field) => collect($messages)->map(
+                    fn ($message) => "{$field}: {$message}",
+                ))
+                ->implode('; ');
+
+            if ($flat !== '') {
+                return "Validation failed{$suffix}: {$flat}";
+            }
+        }
+
+        $base = $e->getMessage() ?: class_basename($e);
+        $code = $e->getCode();
+        if (is_int($code) && $code !== 0) {
+            return "{$base} [code={$code}]{$suffix}";
+        }
+
+        return "{$base}{$suffix}";
+    }
+
+    private function buildExceptionTrace(Throwable $e, ?string $responseBody = null): string
+    {
+        $sections = [];
+        $diag = AdminDiagnostic::for($e);
+
+        if ($diag !== null) {
+            $sections[] = 'admin_diagnostic: '.json_encode($diag, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        }
+
+        $sections[] = 'exception: '.get_class($e);
+        if ($e->getCode() !== 0 && $e->getCode() !== '0') {
+            $sections[] = 'exception_code: '.$e->getCode();
+        }
+
+        if ($e instanceof ValidationException) {
+            $sections[] = 'validation_errors: '.json_encode(
+                $e->errors(),
+                JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
+            );
+            $sections[] = 'client_message: '.($e->getMessage() ?: 'The given data was invalid.');
+        } else {
+            $sections[] = 'exception_message: '.($e->getMessage() ?: class_basename($e));
+        }
+
+        if ($responseBody) {
+            $sections[] = 'response: '.$responseBody;
+        }
+
+        if ($previous = $e->getPrevious()) {
+            $sections[] = 'previous: '.get_class($previous).': '.$previous->getMessage();
+        }
+
+        $sections[] = $e->getTraceAsString();
+
+        return implode("\n\n", $sections);
+    }
+
+    private function summarizeResponseBody(?string $responseBody): ?string
+    {
+        if ($responseBody === null || $responseBody === '') {
+            return null;
+        }
+
+        $decoded = json_decode($responseBody, true);
+        if (! is_array($decoded)) {
+            return Str::limit(trim($responseBody), 240);
+        }
+
+        if (isset($decoded['message']) && is_string($decoded['message']) && $decoded['message'] !== '') {
+            return Str::limit($decoded['message'], 240);
+        }
+
+        if (isset($decoded['errors']) && is_array($decoded['errors'])) {
+            $flat = collect($decoded['errors'])
+                ->flatMap(fn ($messages, $field) => collect((array) $messages)->map(
+                    fn ($message) => "{$field}: {$message}",
+                ))
+                ->implode('; ');
+
+            if ($flat !== '') {
+                return Str::limit($flat, 240);
+            }
+        }
+
+        return Str::limit($responseBody, 240);
     }
 
     /**

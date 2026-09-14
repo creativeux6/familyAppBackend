@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
+use App\Support\AdminDiagnostic;
 use Illuminate\Validation\ValidationException;
 use Laravel\Sanctum\PersonalAccessToken;
 use Spatie\Permission\Models\Role;
@@ -23,11 +24,13 @@ class PhoneAuthService
     {
         $phone = $this->normalizePhone($phone);
 
-        // Do not reveal whether the phone is already registered (enumeration).
         if (User::query()->where('phone', $phone)->exists()) {
-            throw ValidationException::withMessages([
-                'phone' => ['Unable to complete registration with these details.'],
-            ]);
+            $this->throwClientSafeValidation(
+                ['phone' => ['This phone number is already registered.']],
+                'AUTH_PHONE_ALREADY_REGISTERED',
+                'Registration blocked: phone number is already registered.',
+                ['phone' => $phone],
+            );
         }
 
         return DB::transaction(function () use ($phone, $displayName, $password, $tokenName) {
@@ -80,9 +83,14 @@ class PhoneAuthService
         if (! $user || ! Hash::check($password, $user->password)) {
             RateLimiter::hit($failureKey, 60 * 15);
 
-            throw ValidationException::withMessages([
-                'phone' => ['These credentials do not match our records.'],
-            ]);
+            $this->throwClientSafeValidation(
+                ['phone' => ['These credentials do not match our records.']],
+                $user ? 'AUTH_INVALID_PASSWORD' : 'AUTH_USER_NOT_FOUND',
+                $user
+                    ? 'Login failed: incorrect password for existing phone.'
+                    : 'Login failed: no user found for phone.',
+                ['phone' => $phone],
+            );
         }
 
         RateLimiter::clear($failureKey);
@@ -247,6 +255,24 @@ class PhoneAuthService
     private function normalizePhone(string $phone): string
     {
         return preg_replace('/\s+/', '', $phone) ?? $phone;
+    }
+
+    /**
+     * Client gets a safe validation payload; admin logs get the real cause/code.
+     *
+     * @param  array<string, list<string>>  $messages
+     * @param  array<string, mixed>  $context
+     */
+    private function throwClientSafeValidation(
+        array $messages,
+        string $errorCode,
+        string $internalMessage,
+        array $context = [],
+    ): never {
+        $exception = ValidationException::withMessages($messages);
+        AdminDiagnostic::attach($exception, $errorCode, $internalMessage, $context);
+
+        throw $exception;
     }
 
     /** @return array<string, mixed> */

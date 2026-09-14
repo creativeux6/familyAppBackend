@@ -69,7 +69,7 @@ class AuthAbuseProtectionTest extends TestCase
         $response->assertStatus(429);
     }
 
-    public function test_register_does_not_reveal_existing_phone(): void
+    public function test_register_rejects_existing_phone_with_clear_message(): void
     {
         User::factory()->create([
             'phone' => '+923005555555',
@@ -84,10 +84,9 @@ class AuthAbuseProtectionTest extends TestCase
         ]);
 
         $response->assertStatus(422)
-            ->assertJsonMissing(['Phone number is already registered.'])
             ->assertJsonPath(
                 'errors.phone.0',
-                'Unable to complete registration with these details.',
+                'This phone number is already registered.',
             );
     }
 }

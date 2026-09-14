@@ -47,6 +47,8 @@ class LogApiResponse
         }
 
         $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
+        $exception = property_exists($response, 'exception') ? $response->exception : null;
+
         $this->logService->recordHttpResponse(
             $request->user(),
             $request->method(),
@@ -56,6 +58,7 @@ class LogApiResponse
             $requestId,
             $durationMs,
             $this->responseSummary($response),
+            $exception instanceof Throwable ? $exception : null,
         );
         $request->attributes->set('api_response_logged', true);
 
