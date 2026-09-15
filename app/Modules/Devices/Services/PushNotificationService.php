@@ -71,6 +71,7 @@ class PushNotificationService
                         'type' => 'family.member_joined',
                         'family_uuid' => $family->uuid,
                         'member_uuid' => $member->uuid,
+                        'route' => '/family-tree',
                     ],
                     0,
                 );
@@ -117,6 +118,7 @@ class PushNotificationService
                     'access' => $access,
                     'sharer_uuid' => (string) $sharer->uuid,
                     'unread_count' => (string) $unreadCount,
+                    'route' => '/gallery',
                 ],
                 0,
             );
@@ -163,6 +165,7 @@ class PushNotificationService
                     'status' => $status,
                     'actor_uuid' => (string) $actor->uuid,
                     'pending_received_count' => (string) $pendingCount,
+                    'route' => '/connections',
                 ],
                 $pendingCount,
             );
@@ -187,6 +190,7 @@ class PushNotificationService
                 $message,
                 [
                     'type' => 'storage.access_warning',
+                    'route' => '/storage/plans',
                 ],
                 0,
             );
@@ -218,8 +222,10 @@ class PushNotificationService
                     'group_uuid' => $message->group_uuid,
                     'message_uuid' => $message->uuid,
                     'badge' => (string) $badge,
+                    'route' => '/groups/'.$message->group_uuid.'/chat',
                 ],
                 $badge,
+                'chat_'.$message->group_uuid,
             );
         }
     }

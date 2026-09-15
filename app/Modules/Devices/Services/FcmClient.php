@@ -18,8 +18,14 @@ class FcmClient
     }
 
     /** @param  array<string, mixed>  $data */
-    public function send(string $deviceToken, string $title, string $body, array $data, int $badge): bool
-    {
+    public function send(
+        string $deviceToken,
+        string $title,
+        string $body,
+        array $data,
+        int $badge,
+        ?string $androidTag = null,
+    ): bool {
         if (! $this->isConfigured() || $deviceToken === '') {
             return false;
         }
@@ -27,6 +33,14 @@ class FcmClient
         try {
             $accessToken = $this->accessToken();
             $projectId = $this->projectId();
+
+            $androidNotification = [
+                'channel_id' => 'messages',
+                'notification_count' => $badge,
+            ];
+            if ($androidTag !== null && $androidTag !== '') {
+                $androidNotification['tag'] = $androidTag;
+            }
 
             $payload = [
                 'message' => [
@@ -37,16 +51,14 @@ class FcmClient
                     ],
                     'data' => collect($data)->map(fn ($v) => (string) $v)->all(),
                     'android' => [
-                        'notification' => [
-                            'channel_id' => 'messages',
-                            'notification_count' => $badge,
-                        ],
+                        'notification' => $androidNotification,
                     ],
                     'apns' => [
                         'payload' => [
                             'aps' => [
                                 'badge' => $badge,
                                 'sound' => 'default',
+                                'thread-id' => $androidTag ?? 'general',
                             ],
                         ],
                     ],
