@@ -16,6 +16,7 @@ use App\Models\MessageReaction;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -35,10 +36,15 @@ class GroupMessageService
             ->with('user:id,uuid,display_name')
             ->get();
 
+        $with = ['sender:id,uuid,display_name'];
+        if ($this->messageSupportsReactions()) {
+            $with[] = 'reactions.user:id,uuid';
+        }
+
         $query = Message::query()
             ->withTrashed()
             ->where('group_uuid', $groupUuid)
-            ->with(['sender:id,uuid,display_name', 'reactions.user:id,uuid'])
+            ->with($with)
             ->orderByDesc('created_at')
             ->orderByDesc('uuid');
 
@@ -334,6 +340,12 @@ class GroupMessageService
     {
         $this->groupService->requireGroupMember($user, $groupUuid);
 
+        if (! $this->messageSupportsReactions()) {
+            throw ValidationException::withMessages([
+                'emoji' => ['Message reactions are not available yet.'],
+            ]);
+        }
+
         if (! in_array($emoji, ToggleMessageReactionRequest::ALLOWED_EMOJIS, true)) {
             throw ValidationException::withMessages([
                 'emoji' => ['That reaction is not supported.'],
@@ -502,41 +514,67 @@ class GroupMessageService
      */
     public function formatReactions(Message $message, ?User $viewer): array
     {
-        if (! $message->relationLoaded('reactions')) {
-            $message->load(['reactions.user:id,uuid']);
+        if (! $this->messageSupportsReactions()) {
+            return [];
         }
 
-        $grouped = $message->reactions
-            ->groupBy('emoji')
-            ->sortKeys();
-
-        $viewerUuid = $viewer?->uuid;
-        $formatted = [];
-
-        foreach ($grouped as $emoji => $rows) {
-            $reactorUuids = $rows
-                ->map(fn (MessageReaction $reaction) => $reaction->user?->uuid)
-                ->filter()
-                ->values()
-                ->all();
-
-            $formatted[] = [
-                'emoji' => (string) $emoji,
-                'count' => $rows->count(),
-                'reacted_by_me' => $viewerUuid !== null && in_array($viewerUuid, $reactorUuids, true),
-                'reactor_user_uuids' => $reactorUuids,
-            ];
-        }
-
-        usort($formatted, function (array $a, array $b) {
-            if ($a['count'] === $b['count']) {
-                return strcmp($a['emoji'], $b['emoji']);
+        try {
+            if (! $message->relationLoaded('reactions')) {
+                $message->load(['reactions.user:id,uuid']);
             }
 
-            return $b['count'] <=> $a['count'];
-        });
+            $grouped = $message->reactions
+                ->groupBy('emoji')
+                ->sortKeys();
 
-        return $formatted;
+            $viewerUuid = $viewer?->uuid;
+            $formatted = [];
+
+            foreach ($grouped as $emoji => $rows) {
+                $reactorUuids = $rows
+                    ->map(fn (MessageReaction $reaction) => $reaction->user?->uuid)
+                    ->filter()
+                    ->values()
+                    ->all();
+
+                $formatted[] = [
+                    'emoji' => (string) $emoji,
+                    'count' => $rows->count(),
+                    'reacted_by_me' => $viewerUuid !== null && in_array($viewerUuid, $reactorUuids, true),
+                    'reactor_user_uuids' => $reactorUuids,
+                ];
+            }
+
+            usort($formatted, function (array $a, array $b) {
+                if ($a['count'] === $b['count']) {
+                    return strcmp($a['emoji'], $b['emoji']);
+                }
+
+                return $b['count'] <=> $a['count'];
+            });
+
+            return $formatted;
+        } catch (\Throwable $e) {
+            Log::warning('Failed to format message reactions', [
+                'message_uuid' => $message->uuid,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [];
+        }
+    }
+
+    private function messageSupportsReactions(): bool
+    {
+        if (! method_exists(Message::class, 'reactions')) {
+            return false;
+        }
+
+        try {
+            return Schema::hasTable('message_reactions');
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /** @param  Collection<int, GroupMember>  $members */
