@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('media')->middleware('auth:sanctum')->group(function () {
     Route::get('/shares/unread-count', [MediaController::class, 'shareUnreadCount']);
+    Route::get('/shares/activity', [MediaController::class, 'shareActivity']);
     Route::post('/shares/mark-seen', [MediaController::class, 'markSharesSeen']);
 
     Route::get('/', [MediaController::class, 'index']);

@@ -2,40 +2,45 @@
 
 namespace App\Modules\Groups\Events;
 
-use App\Models\Message;
-use App\Modules\Groups\Services\GroupMessageService;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class MessageSent implements ShouldBroadcastNow
+class MessageReactionsUpdated implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
+    /**
+     * @param  array<int, array{emoji: string, count: int, reacted_by_me: bool}>  $reactions
+     */
     public function __construct(
-        public Message $message,
+        public string $groupUuid,
+        public string $messageUuid,
+        public array $reactions,
     ) {}
 
     /** @return array<int, PrivateChannel> */
     public function broadcastOn(): array
     {
         return [
-            new PrivateChannel('group.'.$this->message->group_uuid),
+            new PrivateChannel('group.'.$this->groupUuid),
         ];
     }
 
     public function broadcastAs(): string
     {
-        return 'message.sent';
+        return 'message.reaction';
     }
 
     /** @return array<string, mixed> */
     public function broadcastWith(): array
     {
-        $this->message->loadMissing('sender:id,uuid,display_name');
-
-        return app(GroupMessageService::class)->formatMessage($this->message);
+        return [
+            'group_uuid' => $this->groupUuid,
+            'message_uuid' => $this->messageUuid,
+            'reactions' => $this->reactions,
+        ];
     }
 }

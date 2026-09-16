@@ -40,6 +40,28 @@ class MediaController extends Controller
         ]);
     }
 
+    #[OA\Get(
+        path: '/media/shares/activity',
+        operationId: 'mediaShareActivity',
+        summary: 'Recent media share activity for the home feed',
+        tags: ['Media'],
+        security: [['bearerAuth' => []]],
+        responses: [new OA\Response(response: 200, description: 'Activity feed')]
+    )]
+    public function shareActivity(Request $request): JsonResponse
+    {
+        $days = (int) $request->query('days', 2);
+        $limit = (int) $request->query('limit', 20);
+
+        return response()->json(
+            $this->shareInboxService->recentActivityForUser(
+                $request->user(),
+                $days,
+                $limit,
+            )
+        );
+    }
+
     public function markSharesSeen(MarkMediaSharesSeenRequest $request): JsonResponse
     {
         return response()->json(

@@ -19,6 +19,8 @@ Route::prefix('groups')->middleware('auth:sanctum')->group(function () {
     Route::post('/{uuid}/read', [GroupMessageController::class, 'markRead']);
     Route::patch('/{uuid}/messages/{messageUuid}', [GroupMessageController::class, 'update']);
     Route::delete('/{uuid}/messages/{messageUuid}', [GroupMessageController::class, 'destroy']);
+    Route::post('/{uuid}/messages/{messageUuid}/reactions', [GroupMessageController::class, 'toggleReaction'])
+        ->middleware('throttle:chat-messages');
     Route::post('/{uuid}/encryption/envelopes', [GroupEncryptionController::class, 'storeEnvelopes']);
     Route::get('/{uuid}/encryption/envelopes/me', [GroupEncryptionController::class, 'myEnvelope']);
 

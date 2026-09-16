@@ -33,6 +33,11 @@ class MediaPermission extends Model
         return $this->belongsTo(User::class);
     }
 
+    public function grantedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'granted_by_user_id');
+    }
+
     public function group(): BelongsTo
     {
         return $this->belongsTo(Group::class, 'group_uuid', 'uuid');

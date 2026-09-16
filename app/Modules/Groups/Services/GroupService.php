@@ -142,11 +142,18 @@ class GroupService
         $groups = Group::query()
             ->whereHas('members', fn ($q) => $q->where('user_id', $user->id))
             ->with(['members.user:id,uuid,display_name'])
-            ->latest()
-            ->get();
+            ->get()
+            ->map(fn (Group $group) => $this->formatGroup($group, $user))
+            ->sortByDesc(function (array $group) {
+                return $group['last_message']['created_at']
+                    ?? $group['created_at']
+                    ?? '';
+            })
+            ->values()
+            ->all();
 
         return [
-            'groups' => $groups->map(fn (Group $group) => $this->formatGroup($group, $user))->values()->all(),
+            'groups' => $groups,
             'connected_contacts' => $this->connectedContactsFor($user),
         ];
     }

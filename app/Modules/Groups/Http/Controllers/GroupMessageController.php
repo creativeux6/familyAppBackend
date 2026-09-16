@@ -5,6 +5,7 @@ namespace App\Modules\Groups\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Groups\Http\Requests\MarkGroupReadRequest;
 use App\Modules\Groups\Http\Requests\SendMessageRequest;
+use App\Modules\Groups\Http\Requests\ToggleMessageReactionRequest;
 use App\Modules\Groups\Http\Requests\UpdateMessageRequest;
 use App\Modules\Groups\Services\GroupMessageService;
 use Illuminate\Http\JsonResponse;
@@ -79,6 +80,21 @@ class GroupMessageController extends Controller
                 $request->user(),
                 $uuid,
                 $messageUuid,
+            )
+        );
+    }
+
+    public function toggleReaction(
+        ToggleMessageReactionRequest $request,
+        string $uuid,
+        string $messageUuid,
+    ): JsonResponse {
+        return response()->json(
+            $this->messageService->toggleReaction(
+                $request->user(),
+                $uuid,
+                $messageUuid,
+                $request->validated('emoji'),
             )
         );
     }

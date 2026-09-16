@@ -8,8 +8,11 @@ use App\Models\Message;
 use App\Models\User;
 use App\Modules\Groups\Events\GroupReadUpdated;
 use App\Modules\Groups\Events\MessageDeleted;
+use App\Modules\Groups\Events\MessageReactionsUpdated;
 use App\Modules\Groups\Events\MessageSent;
 use App\Modules\Groups\Events\MessageUpdated;
+use App\Modules\Groups\Http\Requests\ToggleMessageReactionRequest;
+use App\Models\MessageReaction;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
@@ -35,7 +38,7 @@ class GroupMessageService
         $query = Message::query()
             ->withTrashed()
             ->where('group_uuid', $groupUuid)
-            ->with('sender:id,uuid,display_name')
+            ->with(['sender:id,uuid,display_name', 'reactions.user:id,uuid'])
             ->orderByDesc('created_at')
             ->orderByDesc('uuid');
 
@@ -320,9 +323,79 @@ class GroupMessageService
 
         $message->delete();
 
+        MessageReaction::query()->where('message_uuid', $messageUuid)->delete();
+
         broadcast(new MessageDeleted($groupUuid, $messageUuid));
 
         return ['message' => 'Message deleted.'];
+    }
+
+    public function toggleReaction(User $user, string $groupUuid, string $messageUuid, string $emoji): array
+    {
+        $this->groupService->requireGroupMember($user, $groupUuid);
+
+        if (! in_array($emoji, ToggleMessageReactionRequest::ALLOWED_EMOJIS, true)) {
+            throw ValidationException::withMessages([
+                'emoji' => ['That reaction is not supported.'],
+            ]);
+        }
+
+        $message = Message::query()
+            ->where('group_uuid', $groupUuid)
+            ->where('uuid', $messageUuid)
+            ->first();
+
+        if (! $message) {
+            throw ValidationException::withMessages([
+                'message_uuid' => ['Message not found.'],
+            ]);
+        }
+
+        if ($message->trashed()) {
+            throw ValidationException::withMessages([
+                'message_uuid' => ['You cannot react to a deleted message.'],
+            ]);
+        }
+
+        $existing = MessageReaction::query()
+            ->where('message_uuid', $messageUuid)
+            ->where('user_id', $user->id)
+            ->first();
+
+        if ($existing && $existing->emoji === $emoji) {
+            $existing->delete();
+        } elseif ($existing) {
+            $existing->update(['emoji' => $emoji]);
+        } else {
+            MessageReaction::query()->create([
+                'message_uuid' => $messageUuid,
+                'user_id' => $user->id,
+                'emoji' => $emoji,
+            ]);
+        }
+
+        $message->load(['reactions.user:id,uuid']);
+        $reactions = $this->formatReactions($message, $user);
+
+        try {
+            broadcast(new MessageReactionsUpdated(
+                $groupUuid,
+                $messageUuid,
+                $this->formatReactions($message, null),
+            ));
+        } catch (\Throwable $e) {
+            Log::warning('Message reaction broadcast failed', [
+                'message_uuid' => $messageUuid,
+                'group_uuid' => $groupUuid,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return [
+            'message_uuid' => $messageUuid,
+            'group_uuid' => $groupUuid,
+            'reactions' => $reactions,
+        ];
     }
 
     public function unreadCountForMember(string $groupUuid, GroupMember $membership): int
@@ -410,6 +483,7 @@ class GroupMessageService
             'read_count' => $readCount,
             'other_member_count' => $otherMemberCount,
             'read_by' => $readBy,
+            'reactions' => $isDeleted ? [] : $this->formatReactions($message, $viewer),
         ];
 
         if ($isDeleted) {
@@ -421,6 +495,48 @@ class GroupMessageService
         }
 
         return $payload;
+    }
+
+    /**
+     * @return array<int, array{emoji: string, count: int, reacted_by_me: bool, reactor_user_uuids: list<string>}>
+     */
+    public function formatReactions(Message $message, ?User $viewer): array
+    {
+        if (! $message->relationLoaded('reactions')) {
+            $message->load(['reactions.user:id,uuid']);
+        }
+
+        $grouped = $message->reactions
+            ->groupBy('emoji')
+            ->sortKeys();
+
+        $viewerUuid = $viewer?->uuid;
+        $formatted = [];
+
+        foreach ($grouped as $emoji => $rows) {
+            $reactorUuids = $rows
+                ->map(fn (MessageReaction $reaction) => $reaction->user?->uuid)
+                ->filter()
+                ->values()
+                ->all();
+
+            $formatted[] = [
+                'emoji' => (string) $emoji,
+                'count' => $rows->count(),
+                'reacted_by_me' => $viewerUuid !== null && in_array($viewerUuid, $reactorUuids, true),
+                'reactor_user_uuids' => $reactorUuids,
+            ];
+        }
+
+        usort($formatted, function (array $a, array $b) {
+            if ($a['count'] === $b['count']) {
+                return strcmp($a['emoji'], $b['emoji']);
+            }
+
+            return $b['count'] <=> $a['count'];
+        });
+
+        return $formatted;
     }
 
     /** @param  Collection<int, GroupMember>  $members */
