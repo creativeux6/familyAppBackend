@@ -52,7 +52,29 @@ class GroupMessageService
             $query->where('uuid', '<', $cursor);
         }
 
-        $messages = $query->limit($limit + 1)->get();
+        try {
+            $messages = $query->limit($limit + 1)->get();
+        } catch (\Throwable $e) {
+            // Partial deploys (missing reactions relation/table) must not 500 the chat API.
+            Log::error('Message list failed with reactions eager-load; retrying without', [
+                'group_uuid' => $groupUuid,
+                'exception' => $e,
+            ]);
+
+            $fallback = Message::query()
+                ->withTrashed()
+                ->where('group_uuid', $groupUuid)
+                ->with(['sender:id,uuid,display_name'])
+                ->orderByDesc('created_at')
+                ->orderByDesc('uuid');
+
+            if ($cursor) {
+                $fallback->where('uuid', '<', $cursor);
+            }
+
+            $messages = $fallback->limit($limit + 1)->get();
+        }
+
         $hasMore = $messages->count() > $limit;
         $items = $messages->take($limit);
 

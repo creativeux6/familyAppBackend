@@ -363,15 +363,16 @@ class SystemErrorLogService
     }
 
     /**
-     * Client-reported failures (e.g. nginx 413) that never reach Laravel's exception handler.
+     * Client-reported failures (app crashes, nginx 413, bootstrap stalls).
+     * Auth is optional so startup failures still appear in admin logs.
      *
      * @param  array{status_code?: int, method?: string, path?: string, message?: string, exception_class?: string, detail?: string}  $payload
      */
-    public function recordClientReport(User $user, array $payload, ?string $ip = null): void
+    public function recordClientReport(?User $user, array $payload, ?string $ip = null): void
     {
         $this->insertRow([
             'uuid' => (string) Str::uuid(),
-            'user_id' => $user->id,
+            'user_id' => $user?->id,
             'method' => isset($payload['method'])
                 ? strtoupper(substr((string) $payload['method'], 0, 16))
                 : null,

@@ -54,7 +54,12 @@ return [
 
         'stack' => [
             'driver' => 'stack',
-            'channels' => explode(',', (string) env('LOG_STACK', 'single,admin_db')),
+            // Always mirror ERROR+ into system_error_logs (admin panel), even when
+            // LOG_STACK is set to only "single" / "daily" for the file logger.
+            'channels' => array_values(array_unique(array_filter(array_merge(
+                array_map('trim', explode(',', (string) env('LOG_STACK', 'single'))),
+                ['admin_db'],
+            )))),
             'ignore_exceptions' => false,
         ],
 

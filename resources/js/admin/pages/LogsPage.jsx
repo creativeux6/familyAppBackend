@@ -21,7 +21,7 @@ function statusBadge(status) {
 const emptyFilters = {
   q: '',
   status_code: '',
-  severity: 'all',
+  severity: 'errors',
   from: '',
   to: '',
 };

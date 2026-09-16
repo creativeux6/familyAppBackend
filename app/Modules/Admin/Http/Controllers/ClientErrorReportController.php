@@ -2,9 +2,11 @@
 
 namespace App\Modules\Admin\Http\Controllers;
 
+use App\Models\User;
 use App\Modules\Admin\Services\SystemErrorLogService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class ClientErrorReportController
 {
@@ -23,8 +25,11 @@ class ClientErrorReportController
             'detail' => ['sometimes', 'nullable', 'string', 'max:8000'],
         ]);
 
+        // Optional auth: attach user when a Sanctum token is present.
+        $user = Auth::guard('sanctum')->user() ?? $request->user();
+
         $this->logService->recordClientReport(
-            $request->user(),
+            $user instanceof User ? $user : null,
             $data,
             $request->ip(),
         );

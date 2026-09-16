@@ -48,12 +48,22 @@ class LogApiResponse
 
         $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
         $exception = property_exists($response, 'exception') ? $response->exception : null;
+        $statusCode = (int) $response->getStatusCode();
+
+        // Skip noisy successful GETs so real failures stay visible in admin logs.
+        $method = strtoupper($request->method());
+        $isMutating = in_array($method, ['POST', 'PUT', 'PATCH', 'DELETE'], true);
+        if ($statusCode < 400 && ! $isMutating && $exception === null) {
+            $request->attributes->set('api_response_logged', true);
+
+            return $response;
+        }
 
         $this->logService->recordHttpResponse(
             $request->user(),
             $request->method(),
             '/'.$request->path(),
-            (int) $response->getStatusCode(),
+            $statusCode,
             $request->ip(),
             $requestId,
             $durationMs,

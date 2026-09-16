@@ -8,11 +8,10 @@ use App\Modules\Admin\Http\Controllers\AdminUserController;
 use App\Modules\Admin\Http\Controllers\ClientErrorReportController;
 use Illuminate\Support\Facades\Route;
 
-// Any signed-in client can report failures that never hit Laravel (e.g. nginx 413).
-Route::middleware(['auth:sanctum'])->post(
-    '/client-errors',
-    [ClientErrorReportController::class, 'store'],
-);
+// App/bootstrap failures must reach admin logs even before login.
+// Bearer token is optional — when present the user is attached to the row.
+Route::post('/client-errors', [ClientErrorReportController::class, 'store'])
+    ->middleware('throttle:30,1');
 
 Route::middleware(['auth:sanctum', 'role:super_admin|admin'])->prefix('admin')->group(function () {
     Route::get('/dashboard', [AdminDashboardController::class, 'index']);
