@@ -54,7 +54,7 @@ return [
 
         'stack' => [
             'driver' => 'stack',
-            'channels' => explode(',', (string) env('LOG_STACK', 'single')),
+            'channels' => explode(',', (string) env('LOG_STACK', 'single,admin_db')),
             'ignore_exceptions' => false,
         ],
 
@@ -63,6 +63,12 @@ return [
             'path' => storage_path('logs/laravel.log'),
             'level' => env('LOG_LEVEL', 'debug'),
             'replace_placeholders' => true,
+        ],
+
+        'admin_db' => [
+            'driver' => 'monolog',
+            'handler' => \App\Logging\SystemErrorLogHandler::class,
+            'level' => env('LOG_ADMIN_DB_LEVEL', 'error'),
         ],
 
         'daily' => [

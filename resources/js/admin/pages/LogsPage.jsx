@@ -21,6 +21,7 @@ function statusBadge(status) {
 const emptyFilters = {
   q: '',
   status_code: '',
+  severity: 'all',
   from: '',
   to: '',
 };
@@ -36,10 +37,13 @@ export function LogsPage() {
   const [selected, setSelected] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState('');
+  const [probeInfo, setProbeInfo] = useState('');
+  const [probing, setProbing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState(emptyFilters);
   const [filters, setFilters] = useState(emptyFilters);
   const [page, setPage] = useState(1);
+  const [refreshTick, setRefreshTick] = useState(0);
 
   const statusOptions = useMemo(() => mergeStatusCodes(statusCodes), [statusCodes]);
 
@@ -70,6 +74,18 @@ export function LogsPage() {
       return undefined;
     }
 
+    const timer = setInterval(() => {
+      setRefreshTick((value) => value + 1);
+    }, 8000);
+
+    return () => clearInterval(timer);
+  }, [isAdmin]);
+
+  useEffect(() => {
+    if (!isAdmin) {
+      return undefined;
+    }
+
     let cancelled = false;
     (async () => {
       setLoading(true);
@@ -81,6 +97,9 @@ export function LogsPage() {
         });
         if (filters.q.trim()) query.set('q', filters.q.trim());
         if (filters.status_code) query.set('status_code', String(filters.status_code));
+        if (filters.severity && filters.severity !== 'all') {
+          query.set('severity', filters.severity);
+        }
         if (filters.from) query.set('from', filters.from);
         if (filters.to) query.set('to', filters.to);
 
@@ -114,7 +133,7 @@ export function LogsPage() {
     return () => {
       cancelled = true;
     };
-  }, [filters, page, isAdmin]);
+  }, [filters, page, isAdmin, refreshTick]);
 
   if (!isAdmin) {
     return <Navigate to="/web" replace />;
@@ -131,6 +150,33 @@ export function LogsPage() {
       setSelected(null);
     } finally {
       setDetailLoading(false);
+    }
+  }
+
+  async function runProbe() {
+    setProbing(true);
+    setProbeInfo('');
+    setError('');
+    try {
+      const result = await api('/admin/system-logs/probe', { method: 'POST' });
+      if (result?.ok) {
+        setProbeInfo(
+          `Probe OK — wrote log ${result.uuid}. Total rows: ${result.total}.`,
+        );
+        setRefreshTick((value) => value + 1);
+      } else {
+        setError(
+          result?.write_error
+            || 'Probe failed — system_error_logs is not writable. Run migrations on the live API.',
+        );
+        setProbeInfo(
+          `table_exists=${String(result?.table_exists)} total=${result?.total ?? 0}`,
+        );
+      }
+    } catch (err) {
+      setError(err.message || 'Probe request failed');
+    } finally {
+      setProbing(false);
     }
   }
 
@@ -158,19 +204,33 @@ export function LogsPage() {
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">System logs</h1>
           <p className="mt-1 text-sm text-slate-500">
-            API responses, WebSocket health, and app-side reports (badge <span className="font-mono">App</span>, path{' '}
-            <span className="font-mono">app/…</span>). Search <span className="font-mono">app/media</span>,{' '}
-            <span className="font-mono">app/chat</span>, or <span className="font-mono">app/stream</span>.
+            Live API successes, errors, exceptions, queue failures, and app reports.
+            Auto-refreshes every 8s.
           </p>
         </div>
-        <Link to="/web" className="text-sm text-indigo-600 hover:underline">
-          Back to dashboard
-        </Link>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={runProbe}
+            disabled={probing}
+            className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100 disabled:opacity-60"
+          >
+            {probing ? 'Probing…' : 'Write test log'}
+          </button>
+          <Link to="/web" className="text-sm text-indigo-600 hover:underline">
+            Back to dashboard
+          </Link>
+        </div>
       </div>
 
       {error ? (
         <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {error}
+        </div>
+      ) : null}
+      {probeInfo ? (
+        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          {probeInfo}
         </div>
       ) : null}
 
@@ -188,6 +248,18 @@ export function LogsPage() {
               placeholder="e.g. ValidationException, upload…"
               className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
             />
+          </label>
+          <label className="block text-xs text-slate-500">
+            Severity
+            <select
+              value={draft.severity}
+              onChange={(e) => setDraft((prev) => ({ ...prev, severity: e.target.value }))}
+              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            >
+              <option value="all">All (success + errors)</option>
+              <option value="errors">Errors / exceptions only</option>
+              <option value="success">Success only</option>
+            </select>
           </label>
           <label className="block text-xs text-slate-500">
             Status code
@@ -271,7 +343,8 @@ export function LogsPage() {
               ) : logs.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-slate-500">
-                    No matching logs.
+                    No matching logs. Click <span className="font-medium">Write test log</span> to
+                    verify the logging pipeline, or clear filters to show all successes and errors.
                   </td>
                 </tr>
               ) : (

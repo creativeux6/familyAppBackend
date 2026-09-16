@@ -22,6 +22,7 @@ use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Symfony\Component\Process\Process;
@@ -57,6 +58,28 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(FamilyMemberJoined::class, SendFamilyJoinPushNotification::class);
         Event::listen(MediaSharedWithUser::class, SendMediaSharedPushNotification::class);
         Event::listen(ConnectionUpdated::class, SendConnectionPushNotification::class);
+
+        Queue::failing(function (\Illuminate\Queue\Events\JobFailed $event): void {
+            try {
+                app(\App\Modules\Admin\Services\SystemErrorLogService::class)->recordException(
+                    $event->exception,
+                    null,
+                    'QUEUE',
+                    'queue/'.($event->job->resolveName() ?: 'unknown'),
+                    500,
+                    null,
+                    (string) \Illuminate\Support\Str::uuid(),
+                    null,
+                    json_encode([
+                        'connection' => $event->connectionName,
+                        'queue' => $event->job->getQueue(),
+                        'payload' => $event->job->payload(),
+                    ], JSON_UNESCAPED_SLASHES) ?: null,
+                );
+            } catch (\Throwable) {
+                // Never break the queue worker.
+            }
+        });
 
         $this->startScheduleWorkerWithServe();
     }

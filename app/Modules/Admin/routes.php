@@ -33,6 +33,7 @@ Route::middleware(['auth:sanctum', 'role:super_admin|admin'])->prefix('admin')->
 
     Route::get('/system-logs', [AdminSystemLogController::class, 'index']);
     Route::get('/system-logs/status-codes', [AdminSystemLogController::class, 'statusCodes']);
+    Route::post('/system-logs/probe', [AdminSystemLogController::class, 'probe']);
     Route::get('/system-logs/{uuid}', [AdminSystemLogController::class, 'show']);
     Route::get('/websocket-health', [AdminSystemLogController::class, 'websocketHealth']);
 });

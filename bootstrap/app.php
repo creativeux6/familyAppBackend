@@ -36,11 +36,39 @@ return Application::configure(basePath: dirname(__DIR__))
             fn (Request $request) => $request->is('api/*'),
         );
 
+        // Ensure HTTP exceptions (404/403/…) are reportable so admin logs capture them.
+        $exceptions->stopIgnoring([
+            \Symfony\Component\HttpKernel\Exception\HttpException::class,
+            \Symfony\Component\HttpKernel\Exception\NotFoundHttpException::class,
+            \Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException::class,
+            \Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException::class,
+        ]);
+
         // Fallback for failures that bypass the middleware catch (should be rare).
         $exceptions->reportable(function (\Throwable $e): void {
             $request = request();
-            if (! $request instanceof Request || ! $request->is('api/*')) {
+            if (! $request instanceof Request) {
+                try {
+                    app(\App\Modules\Admin\Services\SystemErrorLogService::class)->recordException(
+                        $e,
+                        null,
+                        null,
+                        'exception/unhandled',
+                        \App\Modules\Admin\Services\SystemErrorLogService::resolveStatus($e),
+                    );
+                } catch (\Throwable) {
+                    // ignore
+                }
+
                 return;
+            }
+
+            if (! $request->is('api/*') && ! $request->is('broadcasting/*')) {
+                // Still capture non-API fatals for admin visibility.
+                $status = \App\Modules\Admin\Services\SystemErrorLogService::resolveStatus($e);
+                if ($status < 500) {
+                    return;
+                }
             }
 
             if ($request->attributes->get('api_response_logged')) {
@@ -57,9 +85,6 @@ return Application::configure(basePath: dirname(__DIR__))
             }
 
             $status = \App\Modules\Admin\Services\SystemErrorLogService::resolveStatus($e);
-            if ($status < 400) {
-                return;
-            }
 
             try {
                 app(\App\Modules\Admin\Services\SystemErrorLogService::class)->recordException(
