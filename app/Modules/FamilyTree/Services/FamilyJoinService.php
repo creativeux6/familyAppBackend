@@ -8,6 +8,7 @@ use App\Models\OnboardingSession;
 use App\Models\User;
 use App\Modules\FamilyTree\Events\FamilyMemberJoined;
 use App\Modules\Onboarding\Services\FamilyMatcherService;
+use App\Support\PersonName;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -216,9 +217,10 @@ class FamilyJoinService
                 $self = $target->fresh();
             } else {
                 if (! $viewer) {
+                    [$fallbackFirst, $fallbackLast] = PersonName::split($user->display_name);
                     $self = $this->matcher->joinExistingFamily($user, $family, [
-                        'first_name' => $data['first_name'] ?? explode(' ', $user->display_name ?? 'Unknown')[0],
-                        'last_name' => $data['last_name'] ?? (explode(' ', $user->display_name ?? 'Unknown')[1] ?? 'Unknown'),
+                        'first_name' => $data['first_name'] ?? ($fallbackFirst !== '' ? $fallbackFirst : 'Unknown'),
+                        'last_name' => $data['last_name'] ?? ($fallbackLast !== '' ? $fallbackLast : 'Unknown'),
                         'gender' => $data['gender'] ?? 'unknown',
                         'is_living' => true,
                     ]);

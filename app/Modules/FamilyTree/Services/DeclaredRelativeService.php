@@ -88,9 +88,58 @@ class DeclaredRelativeService
     {
         $this->upsertDeclared($user, 'father', 0, $data['father'] ?? null);
         $this->upsertDeclared($user, 'mother', 0, $data['mother'] ?? null);
-        $this->upsertDeclared($user, 'spouse', 0, $data['spouse'] ?? null);
-        $this->upsertDeclared($user, 'spouse_father', 0, $data['spouse_father'] ?? null);
-        $this->upsertDeclared($user, 'spouse_mother', 0, $data['spouse_mother'] ?? null);
+
+        $spouses = [];
+        if (array_key_exists('spouses', $data) && is_array($data['spouses'])) {
+            $spouses = $data['spouses'];
+        } elseif ($this->graphService()->relativeHasInfo($data['spouse'] ?? null)) {
+            $spouses = [[
+                ...($data['spouse'] ?? []),
+                'father' => $data['spouse_father'] ?? null,
+                'mother' => $data['spouse_mother'] ?? null,
+            ]];
+        }
+
+        $existingSpouses = UserDeclaredRelative::query()
+            ->where('user_id', $user->id)
+            ->where('relation_type', 'spouse')
+            ->get();
+        $existingSpouseFathers = UserDeclaredRelative::query()
+            ->where('user_id', $user->id)
+            ->where('relation_type', 'spouse_father')
+            ->get();
+        $existingSpouseMothers = UserDeclaredRelative::query()
+            ->where('user_id', $user->id)
+            ->where('relation_type', 'spouse_mother')
+            ->get();
+
+        $spouseCount = 0;
+        foreach ($spouses as $index => $spouseData) {
+            if (! $this->graphService()->relativeHasInfo($spouseData)) {
+                continue;
+            }
+
+            $this->upsertDeclared($user, 'spouse', $index, $spouseData);
+            $this->upsertDeclared($user, 'spouse_father', $index, $spouseData['father'] ?? null);
+            $this->upsertDeclared($user, 'spouse_mother', $index, $spouseData['mother'] ?? null);
+            $spouseCount++;
+        }
+
+        foreach ($existingSpouses as $existing) {
+            if ($existing->relation_index >= $spouseCount) {
+                $existing->delete();
+            }
+        }
+        foreach ($existingSpouseFathers as $existing) {
+            if ($existing->relation_index >= $spouseCount) {
+                $existing->delete();
+            }
+        }
+        foreach ($existingSpouseMothers as $existing) {
+            if ($existing->relation_index >= $spouseCount) {
+                $existing->delete();
+            }
+        }
 
         $children = $data['children'] ?? [];
         $existingChildren = UserDeclaredRelative::query()

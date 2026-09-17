@@ -9,7 +9,7 @@ Kinship labels (Grandmother, Cousin, Father-in-law, etc.) are **computed at runt
 | Mode | Description |
 |------|-------------|
 | `blood` | Blood relatives only — no marriage (`spouse_of`) hops |
-| `inlaws` | Includes in-laws via marriage paths |
+| `inlaws` | Viewer, spouse(s), couple's children, and the spouse's blood relatives (spouse-side focus; not the same as `all`) |
 | `all` | Full graph (blood + marriage + step/adoptive edges) |
 
 ## GET /family-tree

@@ -2,6 +2,7 @@
 
 namespace App\Modules\Onboarding\Http\Requests;
 
+use App\Support\PersonName;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -31,8 +32,8 @@ class SubmitQuestionnaireRequest extends FormRequest
             'answers' => ['required', 'array', 'min:1'],
             'answers.*.relative_slot' => ['required', Rule::in($slots)],
             'answers.*.relation_index' => ['nullable', 'integer', 'min:0', 'max:20'],
-            'answers.*.first_name' => ['nullable', 'string', 'max:255'],
-            'answers.*.last_name' => ['nullable', 'string', 'max:255'],
+            'answers.*.first_name' => ['required', 'string', 'max:255'],
+            'answers.*.last_name' => ['required', 'string', 'max:255'],
             'answers.*.maiden_name' => ['nullable', 'string', 'max:255'],
             'answers.*.date_of_birth' => ['nullable', 'date'],
             'answers.*.date_of_death' => ['nullable', 'date'],
@@ -49,12 +50,14 @@ class SubmitQuestionnaireRequest extends FormRequest
         $hasSelf = collect($answers)->contains(fn ($a) => ($a['relative_slot'] ?? null) === 'self');
 
         if (! $hasSelf) {
+            [$first, $last] = PersonName::split($this->user()?->display_name);
+
             $this->merge([
                 'answers' => array_merge([[
                     'relative_slot' => 'self',
                     'relation_index' => 0,
-                    'first_name' => $this->user()?->display_name,
-                    'last_name' => 'Member',
+                    'first_name' => $first !== '' ? $first : null,
+                    'last_name' => $last !== '' ? $last : null,
                 ]], $answers),
             ]);
         }

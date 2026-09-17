@@ -43,6 +43,32 @@ class FamilyTreeController extends Controller
                 $request->query('root_member_uuid'),
                 TreeViewMode::fromRequest($request->query('view_mode')),
                 (int) $request->query('max_depth', config('graph.max_tree_depth', 6)),
+                (string) $request->query('scope', 'bootstrap'),
+            )
+        );
+    }
+
+    #[OA\Get(
+        path: '/family-tree/members/{memberUuid}/neighborhood',
+        operationId: 'familyTreeExpandNeighborhood',
+        summary: 'Load one-hop relatives for an expanded tree node',
+        tags: ['FamilyTree'],
+        security: [['bearerAuth' => []]],
+        parameters: [
+            new OA\Parameter(name: 'memberUuid', in: 'path', required: true, schema: new OA\Schema(type: 'string', format: 'uuid')),
+            new OA\Parameter(name: 'view_mode', in: 'query', schema: new OA\Schema(type: 'string', enum: ['blood', 'inlaws', 'all'], default: 'all')),
+        ],
+        responses: [
+            new OA\Response(response: 200, description: 'Neighborhood members and edges'),
+        ]
+    )]
+    public function expandNeighborhood(Request $request, string $memberUuid): JsonResponse
+    {
+        return response()->json(
+            $this->familyTreeService->expandMemberNeighborhood(
+                $request->user(),
+                $memberUuid,
+                TreeViewMode::fromRequest($request->query('view_mode')),
             )
         );
     }

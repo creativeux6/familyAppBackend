@@ -44,6 +44,15 @@ class MysqlFamilyGraphRepository implements FamilyGraphRepositoryInterface
         Collection $members,
         Collection $edges,
     ): array {
+        if ($mode === TreeViewMode::Inlaws) {
+            return $this->buildInlawsSubtree(
+                $rootMemberUuid,
+                $maxDepth,
+                $members,
+                $edges,
+            );
+        }
+
         $adjacency = $this->kinshipResolver->buildAdjacency($edges, $mode);
         $membersByUuid = $members->keyBy('uuid');
 
@@ -91,6 +100,104 @@ class MysqlFamilyGraphRepository implements FamilyGraphRepositoryInterface
             $memberResults = $this->includeDirectSpouses($memberResults, $membersByUuid, $edges);
         }
 
+        return $this->finalizeSubtree($memberResults, $edges);
+    }
+
+    /**
+     * Spouse-side in-law view: viewer, spouse(s), couple children, and the
+     * spouse's blood relatives — distinct from blood and all.
+     *
+     * @return array{members: list<array<string, mixed>>, edges: list<array<string, mixed>>}
+     */
+    private function buildInlawsSubtree(
+        string $rootMemberUuid,
+        int $maxDepth,
+        Collection $members,
+        Collection $edges,
+    ): array {
+        $membersByUuid = $members->keyBy('uuid');
+        $bloodAdjacency = $this->kinshipResolver->buildAdjacency($edges, TreeViewMode::Blood);
+
+        $spouseUuids = [];
+        foreach ($edges as $edge) {
+            if ($edge->edgeType->code !== 'spouse_of') {
+                continue;
+            }
+            if ($edge->from_member_uuid === $rootMemberUuid) {
+                $spouseUuids[] = $edge->to_member_uuid;
+            } elseif ($edge->to_member_uuid === $rootMemberUuid) {
+                $spouseUuids[] = $edge->from_member_uuid;
+            }
+        }
+        $spouseUuids = array_values(array_unique($spouseUuids));
+
+        $visited = [$rootMemberUuid => 0];
+        foreach ($spouseUuids as $spouseUuid) {
+            $visited[$spouseUuid] = 0;
+        }
+
+        // Couple's children (parent edges from root or spouse).
+        $couple = array_flip([$rootMemberUuid, ...$spouseUuids]);
+        foreach ($edges as $edge) {
+            if (! in_array($edge->edgeType->code, ['parent_of', 'adoptive_parent_of', 'step_parent_of'], true)) {
+                continue;
+            }
+            if (! isset($couple[$edge->from_member_uuid])) {
+                continue;
+            }
+            $childUuid = $edge->to_member_uuid;
+            if (! isset($visited[$childUuid])) {
+                $visited[$childUuid] = 1;
+            }
+        }
+
+        // Blood walk from each spouse (in-law family).
+        $queue = [];
+        foreach ($spouseUuids as $spouseUuid) {
+            $queue[] = [$spouseUuid, 0];
+        }
+
+        while ($queue !== []) {
+            [$currentUuid, $depth] = array_shift($queue);
+            if ($depth >= $maxDepth) {
+                continue;
+            }
+
+            foreach ($bloodAdjacency[$currentUuid] ?? [] as $step) {
+                $next = $step['to'];
+                if (isset($visited[$next])) {
+                    continue;
+                }
+                $visited[$next] = $depth + 1;
+                $queue[] = [$next, $depth + 1];
+            }
+        }
+
+        $memberResults = [];
+        foreach ($visited as $uuid => $depth) {
+            /** @var FamilyMember|null $member */
+            $member = $membersByUuid->get($uuid);
+            if ($member) {
+                $memberResults[] = $this->formatMemberNode($member, $depth);
+            }
+        }
+
+        $memberResults = $this->includeParentsOfVisibleMembers(
+            $memberResults,
+            $membersByUuid,
+            $edges,
+        );
+        $memberResults = $this->includeDirectSpouses($memberResults, $membersByUuid, $edges);
+
+        return $this->finalizeSubtree($memberResults, $edges);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $memberResults
+     * @return array{members: list<array<string, mixed>>, edges: list<array<string, mixed>>}
+     */
+    private function finalizeSubtree(array $memberResults, Collection $edges): array
+    {
         $visibleUuids = collect($memberResults)->pluck('uuid')->all();
 
         $edgeResults = $edges

@@ -22,8 +22,8 @@ class MatchMemberCandidatesRequest extends FormRequest
                 Rule::in(['father', 'mother', 'spouse', 'child', 'sibling', 'spouse_father', 'spouse_mother']),
             ],
             'exclude_uuid' => ['nullable', 'uuid'],
-            'first_name' => ['nullable', 'string', 'max:255'],
-            'last_name' => ['nullable', 'string', 'max:255'],
+            'first_name' => ['required', 'string', 'max:255'],
+            'last_name' => ['required', 'string', 'max:255'],
             'date_of_birth' => ['nullable', 'date'],
             'gender' => ['nullable', Rule::in(['male', 'female', 'other', 'unknown'])],
         ];

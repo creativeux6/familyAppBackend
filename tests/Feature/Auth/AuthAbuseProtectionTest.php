@@ -55,7 +55,8 @@ class AuthAbuseProtectionTest extends TestCase
                 'phone' => '+92300444444'.$i,
                 'password' => 'password1',
                 'password_confirmation' => 'password1',
-                'display_name' => 'User '.$i,
+                'first_name' => 'User',
+                'last_name' => (string) $i,
             ]);
         }
 
@@ -63,7 +64,8 @@ class AuthAbuseProtectionTest extends TestCase
             'phone' => '+923004444449',
             'password' => 'password1',
             'password_confirmation' => 'password1',
-            'display_name' => 'User Extra',
+            'first_name' => 'User',
+            'last_name' => 'Extra',
         ]);
 
         $response->assertStatus(429);
@@ -80,7 +82,8 @@ class AuthAbuseProtectionTest extends TestCase
             'phone' => '+923005555555',
             'password' => 'password1',
             'password_confirmation' => 'password1',
-            'display_name' => 'Duplicate',
+            'first_name' => 'Dup',
+            'last_name' => 'Licate',
         ]);
 
         $response->assertStatus(422)

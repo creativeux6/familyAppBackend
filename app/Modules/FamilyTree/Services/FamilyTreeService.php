@@ -32,6 +32,7 @@ class FamilyTreeService
         ?string $rootMemberUuid,
         TreeViewMode $viewMode,
         int $maxDepth,
+        string $scope = 'bootstrap',
     ): array {
         $viewerMember = $this->requireViewerMember($user);
         $maxDepth = max(1, min(8, $maxDepth));
@@ -48,8 +49,114 @@ class FamilyTreeService
             $graph['edges'],
         );
 
+        if ($scope !== 'full') {
+            $seedUuids = $this->defaultVisibleSeedUuids(
+                $viewerMember->uuid,
+                $graph['edges'],
+            );
+            $subtree['members'] = array_values(array_filter(
+                $subtree['members'],
+                fn (array $node) => in_array($node['uuid'], $seedUuids, true),
+            ));
+            $visibleSeed = array_column($subtree['members'], 'uuid');
+            $subtree['edges'] = array_values(array_filter(
+                $subtree['edges'],
+                fn (array $edge) => in_array($edge['from_member_uuid'], $visibleSeed, true)
+                    && in_array($edge['to_member_uuid'], $visibleSeed, true),
+            ));
+        }
+
+        return $this->formatTreePayload(
+            $user,
+            $viewerMember,
+            $rootUuid,
+            $viewMode,
+            $graph,
+            $subtree,
+        );
+    }
+
+    /** @return array<string, mixed> */
+    public function expandMemberNeighborhood(
+        User $user,
+        string $memberUuid,
+        TreeViewMode $viewMode,
+    ): array {
+        $viewerMember = $this->requireViewerMember($user);
+        $this->assertSameFamily($viewerMember, $memberUuid);
+
+        $graph = $this->graphRepository->loadFamilyGraph($viewerMember->family_uuid);
+        $neighborhoodUuids = $this->neighborhoodUuids($memberUuid, $graph['edges']);
+        $neighborhoodUuids[] = $memberUuid;
+        $neighborhoodUuids = array_values(array_unique($neighborhoodUuids));
+
+        $membersByUuid = $graph['members']->keyBy('uuid');
+        $subtreeMembers = [];
+        foreach ($neighborhoodUuids as $uuid) {
+            /** @var FamilyMember|null $member */
+            $member = $membersByUuid->get($uuid);
+            if (! $member) {
+                continue;
+            }
+            $subtreeMembers[] = [
+                'uuid' => $member->uuid,
+                'first_name' => $member->first_name,
+                'last_name' => $member->last_name,
+                'gender' => $member->gender,
+                'is_living' => $member->is_living,
+                'date_of_death' => $member->date_of_death?->format('Y-m-d'),
+                'is_registered' => $member->user_id !== null,
+                'user_uuid' => $member->user?->uuid,
+                'avatar' => app(\App\Modules\Avatars\Services\AvatarService::class)
+                    ->memberAvatarPayload($member),
+                'depth' => 0,
+            ];
+        }
+
+        $subtree = [
+            'members' => $subtreeMembers,
+            'edges' => $graph['edges']
+                ->filter(fn ($edge) => in_array($edge->from_member_uuid, $neighborhoodUuids, true)
+                    && in_array($edge->to_member_uuid, $neighborhoodUuids, true))
+                ->map(fn ($edge) => [
+                    'uuid' => $edge->uuid,
+                    'from_member_uuid' => $edge->from_member_uuid,
+                    'to_member_uuid' => $edge->to_member_uuid,
+                    'edge_type' => $edge->edgeType->code,
+                ])
+                ->values()
+                ->all(),
+        ];
+
+        $payload = $this->formatTreePayload(
+            $user,
+            $viewerMember,
+            $viewerMember->uuid,
+            $viewMode,
+            $graph,
+            $subtree,
+        );
+        $payload['expanded_member_uuid'] = $memberUuid;
+
+        return $payload;
+    }
+
+    /**
+     * @param  array{members: Collection, edges: Collection}  $graph
+     * @param  array{members: list<array<string, mixed>>, edges: list<array<string, mixed>>}  $subtree
+     * @return array<string, mixed>
+     */
+    private function formatTreePayload(
+        User $user,
+        FamilyMember $viewerMember,
+        string $rootUuid,
+        TreeViewMode $viewMode,
+        array $graph,
+        array $subtree,
+    ): array {
         $connectedUserIds = $this->connectedUserIds($user);
         $membersByUuid = $graph['members']->keyBy('uuid');
+        $kinshipCache = [];
 
         $members = collect($subtree['members'])
             ->filter(function (array $node) use ($user, $connectedUserIds, $membersByUuid) {
@@ -58,17 +165,24 @@ class FamilyTreeService
 
                 return $member && $this->isIncludedInTree($user, $member, $connectedUserIds);
             })
-            ->map(function (array $node) use ($user, $viewerMember, $viewMode, $graph, $membersByUuid, $connectedUserIds) {
+            ->map(function (array $node) use ($user, $viewerMember, $viewMode, $graph, $subtree, $membersByUuid, $connectedUserIds, &$kinshipCache) {
                 /** @var FamilyMember $member */
                 $member = $membersByUuid->get($node['uuid']);
-                $kinship = $this->graphRepository->resolveKinship(
-                    $viewerMember->uuid,
+                $cacheKey = $member->uuid;
+                if (! isset($kinshipCache[$cacheKey])) {
+                    $kinshipCache[$cacheKey] = $this->graphRepository->resolveKinship(
+                        $viewerMember->uuid,
+                        $member->uuid,
+                        $viewMode,
+                        $graph['edges'],
+                    );
+                }
+                $node['kinship_label'] = $kinshipCache[$cacheKey]['kinship_label'];
+                $node['expand_count'] = $this->expandCountFor(
                     $member->uuid,
-                    $viewMode,
                     $graph['edges'],
+                    array_column($subtree['members'], 'uuid'),
                 );
-
-                $node['kinship_label'] = $kinship['kinship_label'];
 
                 return $this->applyPrivacyToNode(
                     $node,
@@ -99,6 +213,122 @@ class FamilyTreeService
                 'ghost' => 'Deprecated — unlinked members appear as unregistered',
             ],
         ];
+    }
+
+    /**
+     * Default canvas seed: viewer, ancestors, viewer siblings, parents' siblings.
+     *
+     * @return list<string>
+     */
+    private function defaultVisibleSeedUuids(string $viewerUuid, Collection $edges): array
+    {
+        $parentsOf = [];
+        $childrenOf = [];
+        foreach ($edges as $edge) {
+            $code = $edge->edgeType->code;
+            if (in_array($code, ['parent_of', 'adoptive_parent_of', 'step_parent_of'], true)) {
+                $parentsOf[$edge->to_member_uuid][] = $edge->from_member_uuid;
+                $childrenOf[$edge->from_member_uuid][] = $edge->to_member_uuid;
+            }
+        }
+
+        $visible = [$viewerUuid => true];
+        $queue = [$viewerUuid];
+        while ($queue !== []) {
+            $current = array_shift($queue);
+            foreach ($parentsOf[$current] ?? [] as $parent) {
+                if (! isset($visible[$parent])) {
+                    $visible[$parent] = true;
+                    $queue[] = $parent;
+                }
+            }
+        }
+
+        foreach ($parentsOf[$viewerUuid] ?? [] as $parent) {
+            foreach ($childrenOf[$parent] ?? [] as $sibling) {
+                $visible[$sibling] = true;
+            }
+            foreach ($parentsOf[$parent] ?? [] as $grandparent) {
+                foreach ($childrenOf[$grandparent] ?? [] as $uncle) {
+                    $visible[$uncle] = true;
+                }
+            }
+        }
+
+        return array_keys($visible);
+    }
+
+    /**
+     * One-hop expand set: spouse, children, parents, siblings.
+     *
+     * @return list<string>
+     */
+    private function neighborhoodUuids(string $memberUuid, Collection $edges): array
+    {
+        $parentsOf = [];
+        $childrenOf = [];
+        $spouses = [];
+        foreach ($edges as $edge) {
+            $code = $edge->edgeType->code;
+            if (in_array($code, ['parent_of', 'adoptive_parent_of', 'step_parent_of'], true)) {
+                $parentsOf[$edge->to_member_uuid][] = $edge->from_member_uuid;
+                $childrenOf[$edge->from_member_uuid][] = $edge->to_member_uuid;
+            } elseif ($code === 'spouse_of') {
+                if ($edge->from_member_uuid === $memberUuid) {
+                    $spouses[] = $edge->to_member_uuid;
+                } elseif ($edge->to_member_uuid === $memberUuid) {
+                    $spouses[] = $edge->from_member_uuid;
+                }
+            }
+        }
+
+        $out = $spouses;
+        // Co-spouses: other partners of each spouse (sister-wives / co-husbands).
+        foreach ($spouses as $spouseUuid) {
+            foreach ($edges as $edge) {
+                if ($edge->edgeType->code !== 'spouse_of') {
+                    continue;
+                }
+                $other = null;
+                if ($edge->from_member_uuid === $spouseUuid) {
+                    $other = $edge->to_member_uuid;
+                } elseif ($edge->to_member_uuid === $spouseUuid) {
+                    $other = $edge->from_member_uuid;
+                }
+                if ($other !== null && $other !== $memberUuid) {
+                    $out[] = $other;
+                }
+            }
+        }
+        foreach ($childrenOf[$memberUuid] ?? [] as $child) {
+            $out[] = $child;
+        }
+        foreach ($parentsOf[$memberUuid] ?? [] as $parent) {
+            $out[] = $parent;
+            foreach ($childrenOf[$parent] ?? [] as $sibling) {
+                if ($sibling !== $memberUuid) {
+                    $out[] = $sibling;
+                }
+            }
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    /**
+     * @param  list<string>  $alreadyVisible
+     */
+    private function expandCountFor(string $memberUuid, Collection $edges, array $alreadyVisible): int
+    {
+        $visible = array_flip($alreadyVisible);
+        $pending = 0;
+        foreach ($this->neighborhoodUuids($memberUuid, $edges) as $uuid) {
+            if (! isset($visible[$uuid])) {
+                $pending++;
+            }
+        }
+
+        return $pending;
     }
 
     /** @return array<string, mixed> */
@@ -168,13 +398,33 @@ class FamilyTreeService
         }
 
         return DB::transaction(function () use ($user, $selfMember, $data, $relationType) {
-            $member = $this->memberGraph->addMember(
-                $selfMember,
-                $relationType,
-                $data,
-                $user->id,
-                self::ADDABLE_RELATIONS,
-            );
+            try {
+                $member = $this->memberGraph->addMember(
+                    $selfMember,
+                    $relationType,
+                    $data,
+                    $user->id,
+                    self::ADDABLE_RELATIONS,
+                );
+            } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+                throw ValidationException::withMessages([
+                    'uuid' => [
+                        'That person is already linked to an account in the family tree. '
+                        .'Choose “same person” again, or pick a different relative.',
+                    ],
+                ]);
+            } catch (\Illuminate\Database\QueryException $e) {
+                if ((string) $e->getCode() === '23000' || str_contains($e->getMessage(), 'family_members_user_id')) {
+                    throw ValidationException::withMessages([
+                        'uuid' => [
+                            'That person is already linked to an account in the family tree. '
+                            .'Choose “same person” again, or pick a different relative.',
+                        ],
+                    ]);
+                }
+
+                throw $e;
+            }
 
             $relationIndex = match ($relationType) {
                 'child', 'sibling' => $this->declaredRelatives->nextRelationIndex(
@@ -193,16 +443,21 @@ class FamilyTreeService
                 $member->uuid,
             );
 
+            // Cross-family "same person" may move the viewer into another family.
+            $viewer = FamilyMember::query()
+                ->where('user_id', $user->id)
+                ->first() ?? $selfMember->fresh() ?? $selfMember;
+
             Family::query()
-                ->where('uuid', $selfMember->family_uuid)
+                ->where('uuid', $viewer->family_uuid)
                 ->update(['member_count' => FamilyMember::query()
-                    ->where('family_uuid', $selfMember->family_uuid)
+                    ->where('family_uuid', $viewer->family_uuid)
                     ->count(),
                 ]);
 
             return [
                 'member' => $this->memberGraph->formatRelative($member),
-                'family_info' => $this->memberGraph->familyInfoForMember($selfMember->fresh(), $user),
+                'family_info' => $this->memberGraph->familyInfoForMember($viewer, $user),
             ];
         });
     }

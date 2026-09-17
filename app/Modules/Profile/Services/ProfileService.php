@@ -52,6 +52,17 @@ class ProfileService
 
         if ($updates !== []) {
             $member->update($updates);
+
+            $first = $updates['first_name'] ?? $member->first_name;
+            $last = $updates['last_name'] ?? $member->last_name;
+            $displayName = trim(trim((string) $first).' '.trim((string) $last));
+
+            if ($displayName !== '') {
+                $user->update([
+                    'display_name' => $displayName,
+                    'name' => $displayName,
+                ]);
+            }
         }
 
         return $this->show($user->fresh());

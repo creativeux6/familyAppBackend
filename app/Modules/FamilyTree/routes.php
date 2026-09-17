@@ -9,6 +9,7 @@ Route::prefix('family-tree')->middleware('auth:sanctum')->group(function () {
     Route::patch('/family-info', [FamilyTreeController::class, 'updateFamilyInfo']);
     Route::post('/member-candidates', [FamilyTreeController::class, 'matchCandidates']);
     Route::post('/members', [FamilyTreeController::class, 'addMember']);
+    Route::get('/members/{memberUuid}/neighborhood', [FamilyTreeController::class, 'expandNeighborhood']);
     Route::get('/members/{memberUuid}', [FamilyTreeController::class, 'member']);
     Route::get('/kinship/{targetMemberUuid}', [FamilyTreeController::class, 'kinship']);
 });

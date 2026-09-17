@@ -22,7 +22,8 @@ class SystemErrorLogDiagnosticsTest extends TestCase
             'phone' => '+923005555555',
             'password' => 'password1',
             'password_confirmation' => 'password1',
-            'display_name' => 'Duplicate',
+            'first_name' => 'Dup',
+            'last_name' => 'Licate',
         ]);
 
         $response->assertStatus(422)
@@ -51,7 +52,8 @@ class SystemErrorLogDiagnosticsTest extends TestCase
             'phone' => 'not-a-phone',
             'password' => 'short',
             'password_confirmation' => 'short',
-            'display_name' => '',
+            'first_name' => '',
+            'last_name' => '',
         ])->assertStatus(422);
 
         $log = SystemErrorLog::query()

@@ -480,20 +480,80 @@ class FamilyMatcherService
     }
 
     /**
-     * Join an existing family when the user has no temporary member row yet.
+     * Attach the user to an existing family without violating the unique
+     * `family_members.user_id` constraint (a user can only own one member row).
      *
      * @param  array<string, mixed>  $selfAnswer
      */
-    public function joinExistingFamily(User $user, Family $family, array $selfAnswer): FamilyMember
-    {
-        $stub = FamilyMember::query()
-            ->where('family_uuid', $family->uuid)
-            ->whereNull('user_id')
-            ->get()
-            ->sortByDesc(fn (FamilyMember $candidate) => $this->scoreAnswer($selfAnswer, $candidate))
-            ->first(fn (FamilyMember $candidate) => $this->scoreAnswer($selfAnswer, $candidate) >= self::SELF_STUB_THRESHOLD);
+    public function joinExistingFamily(
+        User $user,
+        Family $family,
+        array $selfAnswer,
+        ?FamilyMember $preferredStub = null,
+    ): FamilyMember {
+        $existingSelf = FamilyMember::query()
+            ->where('user_id', $user->id)
+            ->first();
+
+        // Already in this family — refresh profile fields and return.
+        if ($existingSelf && $existingSelf->family_uuid === $family->uuid) {
+            $existingSelf->update([
+                'first_name' => $selfAnswer['first_name'] ?? $existingSelf->first_name,
+                'last_name' => $selfAnswer['last_name'] ?? $existingSelf->last_name,
+                'date_of_birth' => $selfAnswer['date_of_birth'] ?? $existingSelf->date_of_birth?->format('Y-m-d'),
+                'birthplace' => $selfAnswer['birthplace'] ?? $existingSelf->birthplace,
+                'gender' => ($selfAnswer['gender'] ?? 'unknown') !== 'unknown'
+                    ? $selfAnswer['gender']
+                    : $existingSelf->gender,
+                'is_living' => $selfAnswer['is_living'] ?? $existingSelf->is_living,
+            ]);
+
+            return $existingSelf->fresh();
+        }
+
+        $stub = null;
+        if (
+            $preferredStub
+            && $preferredStub->family_uuid === $family->uuid
+            && $preferredStub->user_id === null
+        ) {
+            $stub = $preferredStub;
+        }
+
+        if (! $stub) {
+            $stub = FamilyMember::query()
+                ->where('family_uuid', $family->uuid)
+                ->whereNull('user_id')
+                ->get()
+                ->sortByDesc(fn (FamilyMember $candidate) => $this->scoreAnswer($selfAnswer, $candidate))
+                ->first(function (FamilyMember $candidate) use ($selfAnswer) {
+                    if ($this->isSameNamedPerson($selfAnswer, $candidate)) {
+                        return true;
+                    }
+
+                    // First-name-only stubs (common when last name was left blank)
+                    // still claim when the first names match exactly.
+                    $first = trim((string) ($selfAnswer['first_name'] ?? ''));
+                    $candidateFirst = trim((string) ($candidate->first_name ?? ''));
+                    if (
+                        $first !== ''
+                        && $candidateFirst !== ''
+                        && strcasecmp($first, $candidateFirst) === 0
+                        && $this->scoreAnswer($selfAnswer, $candidate) >= 0.35
+                    ) {
+                        return true;
+                    }
+
+                    return $this->scoreAnswer($selfAnswer, $candidate) >= self::SELF_STUB_THRESHOLD;
+                });
+        }
 
         if ($stub) {
+            // Release unique user_id on the old row before claiming the stub.
+            if ($existingSelf && $existingSelf->uuid !== $stub->uuid) {
+                $existingSelf->update(['user_id' => null]);
+            }
+
             $stub->update([
                 'user_id' => $user->id,
                 'first_name' => $selfAnswer['first_name'] ?? $stub->first_name,
@@ -507,6 +567,24 @@ class FamilyMatcherService
             ]);
 
             return $stub->fresh();
+        }
+
+        // No stub to claim: move the existing member into the target family
+        // instead of inserting a second row with the same user_id.
+        if ($existingSelf) {
+            $existingSelf->update([
+                'family_uuid' => $family->uuid,
+                'first_name' => $selfAnswer['first_name'] ?? $existingSelf->first_name,
+                'last_name' => $selfAnswer['last_name'] ?? $existingSelf->last_name,
+                'date_of_birth' => $selfAnswer['date_of_birth'] ?? $existingSelf->date_of_birth?->format('Y-m-d'),
+                'birthplace' => $selfAnswer['birthplace'] ?? $existingSelf->birthplace,
+                'gender' => ($selfAnswer['gender'] ?? 'unknown') !== 'unknown'
+                    ? $selfAnswer['gender']
+                    : $existingSelf->gender,
+                'is_living' => $selfAnswer['is_living'] ?? $existingSelf->is_living,
+            ]);
+
+            return $existingSelf->fresh();
         }
 
         return FamilyMember::create([

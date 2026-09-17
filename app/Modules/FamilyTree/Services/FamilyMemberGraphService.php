@@ -55,8 +55,26 @@ class FamilyMemberGraphService
     public function familyInfoForMember(FamilyMember $selfMember, ?User $user = null): array
     {
         $selfParents = $this->parentsOf($selfMember->uuid, $user);
-        $spouse = $this->findSpouseMember($selfMember);
-        $spouseParents = $spouse ? $this->parentsOf($spouse->uuid, $user) : [];
+        $spouses = $this->findSpouseMembers($selfMember);
+        $spousePayloads = [];
+
+        foreach ($spouses as $spouse) {
+            $spouseParents = $this->parentsOf($spouse->uuid, $user);
+            $spousePayloads[] = [
+                ...$this->formatRelative($spouse),
+                'marriage_date' => $this->marriageDateBetween($selfMember, $spouse)?->format('Y-m-d'),
+                'father' => isset($spouseParents['father'])
+                    ? $this->formatRelative($spouseParents['father'])
+                    : null,
+                'mother' => isset($spouseParents['mother'])
+                    ? $this->formatRelative($spouseParents['mother'])
+                    : null,
+            ];
+        }
+
+        $primarySpouse = $spouses->first();
+        $primaryParents = $primarySpouse ? $this->parentsOf($primarySpouse->uuid, $user) : [];
+        $spouseUuids = $spouses->pluck('uuid')->all();
 
         return [
             'father' => isset($selfParents['father'])
@@ -65,22 +83,36 @@ class FamilyMemberGraphService
             'mother' => isset($selfParents['mother'])
                 ? $this->formatRelative($selfParents['mother'])
                 : null,
-            'spouse' => $spouse ? $this->formatRelative($spouse) : null,
-            'spouse_father' => isset($spouseParents['father'])
-                ? $this->formatRelative($spouseParents['father'])
+            'has_multiple_partners' => $spouses->count() > 1,
+            'spouses' => $spousePayloads,
+            // Legacy singular fields mirror the first spouse for older clients.
+            'spouse' => $primarySpouse ? $this->formatRelative($primarySpouse) : null,
+            'spouse_father' => isset($primaryParents['father'])
+                ? $this->formatRelative($primaryParents['father'])
                 : null,
-            'spouse_mother' => isset($spouseParents['mother'])
-                ? $this->formatRelative($spouseParents['mother'])
+            'spouse_mother' => isset($primaryParents['mother'])
+                ? $this->formatRelative($primaryParents['mother'])
                 : null,
             'children' => $this->childrenOf($selfMember->uuid)
-                ->map(fn (FamilyMember $child) => $this->formatRelative($child))
+                ->map(function (FamilyMember $child) use ($selfMember, $spouseUuids) {
+                    $payload = $this->formatRelative($child);
+                    $payload['other_parent_uuid'] = $this->otherParentUuidAmong(
+                        $child->uuid,
+                        $selfMember->uuid,
+                        $spouseUuids,
+                    );
+
+                    return $payload;
+                })
                 ->values()
                 ->all(),
             'siblings' => $this->siblingsOf($selfMember->uuid, $user)
                 ->map(fn (FamilyMember $sibling) => $this->formatRelative($sibling))
                 ->values()
                 ->all(),
-            'marriage_date' => $this->marriageDateFor($selfMember)?->format('Y-m-d'),
+            'marriage_date' => $primarySpouse
+                ? $this->marriageDateBetween($selfMember, $primarySpouse)?->format('Y-m-d')
+                : null,
         ];
     }
 
@@ -104,39 +136,7 @@ class FamilyMemberGraphService
             $user,
         );
 
-        $spouseData = $data['spouse'] ?? null;
-        $spouseHasInfo = $this->relativeHasInfo($spouseData);
-
-        if (! $spouseHasInfo) {
-            $this->removeMatchingRelative($selfMember, 'spouse');
-        } else {
-            $spouseMember = $this->upsertMatchingRelative(
-                $selfMember,
-                'spouse',
-                $spouseData,
-                $this->defaultGenderForSlot('spouse'),
-                $user,
-            );
-            $this->ensureSpouseEdge($selfMember, $spouseMember, $user->id);
-            $this->syncMarriageDate($selfMember, $spouseMember, $data['marriage_date'] ?? null);
-
-            $this->syncParentStub(
-                $selfMember,
-                $spouseMember,
-                'spouse_father',
-                $data['spouse_father'] ?? null,
-                'male',
-                $user,
-            );
-            $this->syncParentStub(
-                $selfMember,
-                $spouseMember,
-                'spouse_mother',
-                $data['spouse_mother'] ?? null,
-                'female',
-                $user,
-            );
-        }
+        $this->syncSpouses($selfMember, $this->normalizeSpousesPayload($data), $user);
 
         $this->syncChildren($selfMember, $data['children'] ?? [], $user->id);
 
@@ -212,11 +212,7 @@ class FamilyMemberGraphService
         $child = $this->upsertChild($selfMember, $data);
         $activeSelf = $this->activeSelfForUser($userId, $selfMember);
         $this->ensureParentEdge($activeSelf, $child, $userId);
-
-        $spouse = $this->findSpouseMember($activeSelf);
-        if ($spouse) {
-            $this->ensureParentEdge($spouse, $child, $userId);
-        }
+        $this->syncChildOtherParent($activeSelf, $child, $data, $userId);
 
         return $child;
     }
@@ -268,39 +264,61 @@ class FamilyMemberGraphService
 
     public function findSpouseMember(FamilyMember $selfMember): ?FamilyMember
     {
-        $spouseUuid = $this->spouseUuidFor($selfMember->uuid);
+        return $this->findSpouseMembers($selfMember)->first();
+    }
 
-        if (! $spouseUuid) {
-            return null;
+    /** @return Collection<int, FamilyMember> */
+    public function findSpouseMembers(FamilyMember $selfMember): Collection
+    {
+        $uuids = $this->spouseUuidsFor($selfMember->uuid);
+        if ($uuids === []) {
+            return collect();
         }
 
-        return FamilyMember::query()->find($spouseUuid);
+        $members = FamilyMember::query()->whereIn('uuid', $uuids)->get()->keyBy('uuid');
+
+        return collect($uuids)
+            ->map(fn (string $uuid) => $members->get($uuid))
+            ->filter()
+            ->values();
     }
 
     public function spouseUuidFor(string $memberUuid): ?string
     {
-        $edge = RelationshipEdge::query()
+        return $this->spouseUuidsFor($memberUuid)[0] ?? null;
+    }
+
+    /** @return list<string> */
+    public function spouseUuidsFor(string $memberUuid): array
+    {
+        $edges = RelationshipEdge::query()
             ->where(function ($query) use ($memberUuid) {
                 $query->where('from_member_uuid', $memberUuid)
                     ->orWhere('to_member_uuid', $memberUuid);
             })
             ->whereHas('edgeType', fn ($query) => $query->where('code', 'spouse_of'))
-            ->first();
+            ->orderBy('marriage_date')
+            ->orderBy('created_at')
+            ->get();
 
-        if (! $edge) {
-            return null;
+        $uuids = [];
+        foreach ($edges as $edge) {
+            $other = $edge->from_member_uuid === $memberUuid
+                ? $edge->to_member_uuid
+                : $edge->from_member_uuid;
+            if (! in_array($other, $uuids, true)) {
+                $uuids[] = $other;
+            }
         }
 
-        return $edge->from_member_uuid === $memberUuid
-            ? $edge->to_member_uuid
-            : $edge->from_member_uuid;
+        return $uuids;
     }
 
     /** @return array<string, FamilyMember> */
     public function parentsOf(string $childUuid, ?User $user = null): array
     {
         $parents = [];
-        $spouseUuid = $this->spouseUuidFor($childUuid);
+        $spouseUuids = $this->spouseUuidsFor($childUuid);
 
         if ($user) {
             foreach (['father', 'mother'] as $slot) {
@@ -318,7 +336,7 @@ class FamilyMemberGraphService
                 if (
                     $member
                     && $this->isParentOf($member->uuid, $childUuid)
-                    && $member->uuid !== $spouseUuid
+                    && ! in_array($member->uuid, $spouseUuids, true)
                 ) {
                     $parents[$slot] = $member;
                 }
@@ -338,7 +356,7 @@ class FamilyMemberGraphService
                 continue;
             }
 
-            if ($spouseUuid !== null && $fromMember->uuid === $spouseUuid) {
+            if (in_array($fromMember->uuid, $spouseUuids, true)) {
                 continue;
             }
 
@@ -501,10 +519,22 @@ class FamilyMemberGraphService
 
     public function marriageDateFor(FamilyMember $member): ?\Carbon\Carbon
     {
+        $spouse = $this->findSpouseMember($member);
+
+        return $spouse ? $this->marriageDateBetween($member, $spouse) : null;
+    }
+
+    public function marriageDateBetween(FamilyMember $left, FamilyMember $right): ?\Carbon\Carbon
+    {
         $edge = RelationshipEdge::query()
-            ->where(function ($query) use ($member) {
-                $query->where('from_member_uuid', $member->uuid)
-                    ->orWhere('to_member_uuid', $member->uuid);
+            ->where(function ($query) use ($left, $right) {
+                $query->where(function ($inner) use ($left, $right) {
+                    $inner->where('from_member_uuid', $left->uuid)
+                        ->where('to_member_uuid', $right->uuid);
+                })->orWhere(function ($inner) use ($left, $right) {
+                    $inner->where('from_member_uuid', $right->uuid)
+                        ->where('to_member_uuid', $left->uuid);
+                });
             })
             ->whereHas('edgeType', fn ($query) => $query->where('code', 'spouse_of'))
             ->first();
@@ -536,6 +566,52 @@ class FamilyMemberGraphService
 
         $edge->marriage_date = $marriageDate ?: null;
         $edge->save();
+    }
+
+    /** @param  array<string, mixed>|null  $data */
+    private function syncDirectParent(
+        FamilyMember $selfMember,
+        FamilyMember $childMember,
+        ?array $data,
+        string $defaultGender,
+        User $user,
+    ): void {
+        $slot = $defaultGender === 'male' ? 'father' : 'mother';
+        $existingParents = $this->parentsOf($childMember->uuid, $user);
+        $existing = $existingParents[$slot] ?? null;
+
+        if (! $this->relativeHasInfo($data)) {
+            if ($existing && $existing->user_id === null) {
+                $this->deleteMemberGraph($existing);
+            }
+
+            return;
+        }
+
+        if (! empty($data['uuid'])) {
+            $byUuid = FamilyMember::query()->find($data['uuid']);
+            if ($byUuid && $byUuid->family_uuid === $selfMember->family_uuid) {
+                $byUuid->update($this->matchingAttributes($selfMember, $data, $defaultGender, $byUuid));
+                $this->ensureParentEdge($byUuid->fresh(), $childMember, $user->id);
+
+                return;
+            }
+        }
+
+        $attributes = $this->matchingAttributes($selfMember, $data ?? [], $defaultGender, $existing);
+        if ($existing) {
+            $existing->update($attributes);
+            $parent = $existing->fresh();
+        } else {
+            $this->guardAgainstDuplicateCreate($selfMember, $data ?? [], $slot);
+            $parent = FamilyMember::create([
+                'uuid' => (string) Str::uuid(),
+                ...$attributes,
+            ]);
+        }
+
+        $this->ensureSlotGender($parent, $slot);
+        $this->ensureParentEdge($parent, $childMember, $user->id);
     }
 
     /** @param  array<string, mixed>|null  $data */
@@ -676,19 +752,22 @@ class FamilyMemberGraphService
     {
         $existing = $this->childrenOf($selfMember->uuid);
         $keptUuids = [];
+        $spouseUuids = $this->spouseUuidsFor($selfMember->uuid);
 
         foreach ($children as $childData) {
             if (! $this->relativeHasInfo($childData)) {
                 continue;
             }
 
+            if (count($spouseUuids) > 1 && empty($childData['other_parent_uuid'])) {
+                throw ValidationException::withMessages([
+                    'children' => ['Each child must select a mother/other parent when you have multiple partners.'],
+                ]);
+            }
+
             $child = $this->upsertChild($selfMember, $childData);
             $this->ensureParentEdge($selfMember, $child, $userId);
-
-            $spouse = $this->findSpouseMember($selfMember);
-            if ($spouse) {
-                $this->ensureParentEdge($spouse, $child, $userId);
-            }
+            $this->syncChildOtherParent($selfMember, $child, $childData, $userId);
 
             $keptUuids[] = $child->uuid;
         }
@@ -700,6 +779,252 @@ class FamilyMemberGraphService
 
             $this->deleteMemberGraph($child);
         }
+    }
+
+    /**
+     * Link child to the selected co-parent (or the sole spouse when unspecified).
+     * Never attaches every co-wife as a mother.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function syncChildOtherParent(
+        FamilyMember $selfMember,
+        FamilyMember $child,
+        array $data,
+        int $userId,
+    ): void {
+        $spouseUuids = $this->spouseUuidsFor($selfMember->uuid);
+        $requested = $data['other_parent_uuid'] ?? null;
+
+        if ($requested !== null && $requested !== '') {
+            if (! in_array($requested, $spouseUuids, true)) {
+                throw ValidationException::withMessages([
+                    'children' => ['other_parent_uuid must be one of your partners.'],
+                ]);
+            }
+            $otherParentUuid = $requested;
+        } elseif (count($spouseUuids) === 1) {
+            $otherParentUuid = $spouseUuids[0];
+        } else {
+            $otherParentUuid = null;
+        }
+
+        foreach ($spouseUuids as $spouseUuid) {
+            if ($otherParentUuid !== null && $spouseUuid === $otherParentUuid) {
+                continue;
+            }
+
+            RelationshipEdge::query()
+                ->where('from_member_uuid', $spouseUuid)
+                ->where('to_member_uuid', $child->uuid)
+                ->whereHas('edgeType', fn ($query) => $query->whereIn('code', [
+                    'parent_of', 'adoptive_parent_of', 'step_parent_of',
+                ]))
+                ->delete();
+        }
+
+        if ($otherParentUuid === null) {
+            return;
+        }
+
+        $otherParent = FamilyMember::query()->find($otherParentUuid);
+        if ($otherParent) {
+            $this->ensureParentEdge($otherParent, $child, $userId);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return list<array<string, mixed>>
+     */
+    private function normalizeSpousesPayload(array $data): array
+    {
+        if (array_key_exists('spouses', $data) && is_array($data['spouses'])) {
+            return array_values(array_filter(
+                $data['spouses'],
+                fn ($row) => is_array($row) && $this->relativeHasInfo($row),
+            ));
+        }
+
+        $spouseData = $data['spouse'] ?? null;
+        if (! $this->relativeHasInfo($spouseData)) {
+            return [];
+        }
+
+        return [[
+            ...$spouseData,
+            'marriage_date' => $data['marriage_date'] ?? ($spouseData['marriage_date'] ?? null),
+            'father' => $data['spouse_father'] ?? ($spouseData['father'] ?? null),
+            'mother' => $data['spouse_mother'] ?? ($spouseData['mother'] ?? null),
+        ]];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $spouses
+     */
+    private function syncSpouses(FamilyMember $selfMember, array $spouses, User $user): void
+    {
+        $existing = $this->findSpouseMembers($selfMember);
+        $keptUuids = [];
+
+        foreach ($spouses as $index => $spouseData) {
+            $spouseMember = $this->upsertSpouseAtIndex(
+                $selfMember,
+                $spouseData,
+                $index,
+                $user,
+            );
+            $this->ensureSpouseEdge($selfMember, $spouseMember, $user->id);
+            $this->syncMarriageDate(
+                $selfMember,
+                $spouseMember,
+                $spouseData['marriage_date'] ?? null,
+            );
+
+            $this->syncDirectParent(
+                $selfMember,
+                $spouseMember,
+                $spouseData['father'] ?? null,
+                'male',
+                $user,
+            );
+            $this->syncDirectParent(
+                $selfMember,
+                $spouseMember,
+                $spouseData['mother'] ?? null,
+                'female',
+                $user,
+            );
+
+            $keptUuids[] = $spouseMember->uuid;
+        }
+
+        foreach ($existing as $spouse) {
+            if (in_array($spouse->uuid, $keptUuids, true)) {
+                continue;
+            }
+
+            $this->detachSpouse($selfMember, $spouse);
+        }
+    }
+
+    /** @param  array<string, mixed>  $data */
+    private function upsertSpouseAtIndex(
+        FamilyMember $selfMember,
+        array $data,
+        int $index,
+        User $user,
+    ): FamilyMember {
+        if (! empty($data['uuid'])) {
+            $byUuid = FamilyMember::query()->find($data['uuid']);
+            if ($byUuid && $byUuid->family_uuid !== $selfMember->family_uuid) {
+                app(CrossFamilyJoinService::class)->joinThroughRelative(
+                    $selfMember,
+                    $byUuid,
+                    'spouse',
+                    $user->id,
+                );
+
+                return $byUuid->fresh();
+            }
+
+            if ($byUuid && $byUuid->family_uuid === $selfMember->family_uuid) {
+                $byUuid->update($this->matchingAttributes(
+                    $selfMember,
+                    $data,
+                    $this->defaultGenderForSlot('spouse'),
+                    $byUuid,
+                ));
+
+                return $byUuid->fresh();
+            }
+        }
+
+        $existingSpouses = $this->findSpouseMembers($selfMember);
+        $existing = $existingSpouses->get($index);
+        $attributes = $this->matchingAttributes(
+            $selfMember,
+            $data,
+            $this->defaultGenderForSlot('spouse'),
+            $existing,
+        );
+
+        if ($existing) {
+            $existing->update($attributes);
+
+            return $existing->fresh();
+        }
+
+        $this->guardAgainstDuplicateCreate($selfMember, $data, 'spouse');
+
+        return FamilyMember::create([
+            'uuid' => (string) Str::uuid(),
+            ...$attributes,
+        ]);
+    }
+
+    private function detachSpouse(FamilyMember $selfMember, FamilyMember $spouse): void
+    {
+        RelationshipEdge::query()
+            ->where(function ($query) use ($selfMember, $spouse) {
+                $query->where(function ($inner) use ($selfMember, $spouse) {
+                    $inner->where('from_member_uuid', $selfMember->uuid)
+                        ->where('to_member_uuid', $spouse->uuid);
+                })->orWhere(function ($inner) use ($selfMember, $spouse) {
+                    $inner->where('from_member_uuid', $spouse->uuid)
+                        ->where('to_member_uuid', $selfMember->uuid);
+                });
+            })
+            ->whereHas('edgeType', fn ($query) => $query->where('code', 'spouse_of'))
+            ->delete();
+
+        if ($spouse->user_id !== null) {
+            return;
+        }
+
+        $hasOtherEdges = RelationshipEdge::query()
+            ->where(function ($query) use ($spouse) {
+                $query->where('from_member_uuid', $spouse->uuid)
+                    ->orWhere('to_member_uuid', $spouse->uuid);
+            })
+            ->exists();
+
+        if (! $hasOtherEdges) {
+            $parents = $this->parentsOf($spouse->uuid);
+            foreach ($parents as $parent) {
+                if ($parent->user_id === null) {
+                    $this->deleteMemberGraph($parent);
+                }
+            }
+            $this->deleteMemberGraph($spouse);
+        }
+    }
+
+    /**
+     * @param  list<string>  $candidateParentUuids
+     */
+    private function otherParentUuidAmong(
+        string $childUuid,
+        string $selfUuid,
+        array $candidateParentUuids,
+    ): ?string {
+        $parentEdges = RelationshipEdge::query()
+            ->where('to_member_uuid', $childUuid)
+            ->whereHas('edgeType', fn ($query) => $query->whereIn('code', [
+                'parent_of', 'adoptive_parent_of', 'step_parent_of',
+            ]))
+            ->get();
+
+        foreach ($parentEdges as $edge) {
+            if (
+                $edge->from_member_uuid !== $selfUuid
+                && in_array($edge->from_member_uuid, $candidateParentUuids, true)
+            ) {
+                return $edge->from_member_uuid;
+            }
+        }
+
+        return null;
     }
 
     /** @param  list<array<string, mixed>>  $siblings */
@@ -1054,9 +1379,9 @@ class FamilyMemberGraphService
             return false;
         }
 
-        $spouseUuid = $this->spouseUuidFor($selfMember->uuid);
+        $spouseUuids = $this->spouseUuidsFor($selfMember->uuid);
 
-        return $spouseUuid !== null && $candidate->uuid === $spouseUuid;
+        return $spouseUuids !== [] && in_array($candidate->uuid, $spouseUuids, true);
     }
 
     /** @param  array<string, mixed>  $data */
