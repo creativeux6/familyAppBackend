@@ -20,6 +20,15 @@ class StorageQuotaService
 {
     public const FREE_QUOTA_BYTES = 5 * 1024 * 1024 * 1024;
 
+    /** Free-plan style ratios vs storage when admin raises a Free user's cap. */
+    public const FREE_ACCESS_MULTIPLIER = 3;
+
+    public const FREE_STREAM_MULTIPLIER = 2;
+
+    public const FREE_DOWNLOAD_MULTIPLIER = 1;
+
+    public const FREE_FILE_VIEW_MULTIPLIER = 3;
+
     public const ACTION_UPLOAD = 'upload';
 
     public const ACTION_STREAM = 'stream';
@@ -55,6 +64,21 @@ class StorageQuotaService
         return max(1, (int) $this->poolContext($user)->usage->monthly_access_limit_bytes);
     }
 
+    public function streamingLimitBytes(User $user): int
+    {
+        return max(1, (int) $this->poolContext($user)->usage->streaming_limit_bytes);
+    }
+
+    public function downloadLimitBytes(User $user): int
+    {
+        return max(1, (int) $this->poolContext($user)->usage->download_limit_bytes);
+    }
+
+    public function fileViewLimitBytes(User $user): int
+    {
+        return max(1, (int) $this->poolContext($user)->usage->file_view_limit_bytes);
+    }
+
     public function isUnlimited(User $user): bool
     {
         return false;
@@ -67,7 +91,7 @@ class StorageQuotaService
 
     public function ownedBytes(User $user): int
     {
-        return (int) $user->storage_used_bytes;
+        return $this->computeOwnedStoredBytes($user);
     }
 
     public function usedBytes(User $user): int
@@ -82,7 +106,16 @@ class StorageQuotaService
 
     public function readBytes(User $user): int
     {
-        return (int) $user->storage_read_bytes;
+        return (int) StorageUsageLog::query()
+            ->where('user_id', $user->id)
+            ->whereIn('action', [
+                self::ACTION_STREAM,
+                self::ACTION_DOWNLOAD,
+                self::ACTION_FILE_VIEW,
+                self::ACTION_PREVIEW,
+            ])
+            ->where('bytes_used', '>', 0)
+            ->sum('bytes_used');
     }
 
     public function accessUsedBytes(User $user): int
@@ -107,9 +140,9 @@ class StorageQuotaService
 
         $usage = $this->poolContext($user)->usage;
         $meterRemaining = match ($action) {
-            self::ACTION_STREAM => (int) $usage->streaming_limit_bytes - (int) $usage->streamed_bytes,
-            self::ACTION_DOWNLOAD => (int) $usage->download_limit_bytes - (int) $usage->downloaded_bytes,
-            self::ACTION_FILE_VIEW, self::ACTION_PREVIEW => (int) $usage->file_view_limit_bytes - (int) $usage->file_viewed_bytes,
+            self::ACTION_STREAM => $this->streamingLimitBytes($user) - (int) $usage->streamed_bytes,
+            self::ACTION_DOWNLOAD => $this->downloadLimitBytes($user) - (int) $usage->downloaded_bytes,
+            self::ACTION_FILE_VIEW, self::ACTION_PREVIEW => $this->fileViewLimitBytes($user) - (int) $usage->file_viewed_bytes,
             default => null,
         };
 
@@ -158,7 +191,7 @@ class StorageQuotaService
         $stored = $this->syncStoredFromInventory($context);
         $assignment = $context->assignment;
         $usage = $context->usage->fresh() ?? $context->usage;
-        $quota = max(1, (int) $usage->storage_limit_bytes);
+        $quota = $this->quotaBytes($user);
         $plan = $assignment->plan;
         $assignment->loadMissing('pendingPlan');
 
@@ -200,11 +233,13 @@ class StorageQuotaService
         $memberCount = $this->poolService->memberSeatCount($assignment, $usage);
 
         $base = $this->summary($user);
+        $accessQuota = $this->accessQuotaBytes($user);
+        $accessUsed = (int) $usage->monthly_access_bytes;
 
         return array_merge($base, [
-            'access_quota_bytes' => (int) $usage->monthly_access_limit_bytes,
-            'access_used_bytes' => (int) $usage->monthly_access_bytes,
-            'access_remaining_bytes' => max(0, (int) $usage->monthly_access_limit_bytes - (int) $usage->monthly_access_bytes),
+            'access_quota_bytes' => $accessQuota,
+            'access_used_bytes' => $accessUsed,
+            'access_remaining_bytes' => max(0, $accessQuota - $accessUsed),
             'access_period_ends_at' => $usage->period_end?->toIso8601String(),
             'access_soft_gated' => $this->isAccessSoftGated($user),
             'lifetime_read_bytes' => $this->readBytes($user),
@@ -220,9 +255,9 @@ class StorageQuotaService
             'streamed_bytes' => (int) $usage->streamed_bytes,
             'downloaded_bytes' => (int) $usage->downloaded_bytes,
             'file_viewed_bytes' => (int) $usage->file_viewed_bytes,
-            'streaming_limit_bytes' => (int) $usage->streaming_limit_bytes,
-            'download_limit_bytes' => (int) $usage->download_limit_bytes,
-            'file_view_limit_bytes' => (int) $usage->file_view_limit_bytes,
+            'streaming_limit_bytes' => $this->streamingLimitBytes($user),
+            'download_limit_bytes' => $this->downloadLimitBytes($user),
+            'file_view_limit_bytes' => $this->fileViewLimitBytes($user),
             'upload_requests' => (int) $usage->upload_requests,
             'download_requests' => (int) $usage->download_requests,
             'stream_requests' => (int) $usage->stream_requests,
@@ -280,11 +315,7 @@ class StorageQuotaService
         $poolTotal = 0;
         foreach ($members as $member) {
             /** @var User $member */
-            $owned = $this->computeOwnedStoredBytes($member);
-            $poolTotal += $owned;
-            if ((int) $member->storage_used_bytes !== $owned) {
-                $member->update(['storage_used_bytes' => $owned]);
-            }
+            $poolTotal += $this->computeOwnedStoredBytes($member);
         }
 
         $usage->storage_used_bytes = $poolTotal;
@@ -434,8 +465,6 @@ class StorageQuotaService
             $usage->upload_requests = (int) $usage->upload_requests + 1;
             $this->writeLog($context, $user, self::ACTION_UPLOAD, $sizeBytes, 'upload', null);
         });
-
-        $user->increment('storage_used_bytes', $sizeBytes);
     }
 
     public function removeUsage(User $user, int $sizeBytes): void
@@ -453,10 +482,6 @@ class StorageQuotaService
             $usage->storage_used_bytes = max(0, (int) $usage->storage_used_bytes - $sizeBytes);
             $this->writeLog($context, $user, self::ACTION_DELETE, -$sizeBytes, 'delete', null);
         });
-
-        $user->update([
-            'storage_used_bytes' => max(0, $this->ownedBytes($user->fresh()) - $sizeBytes),
-        ]);
     }
 
     /**
@@ -499,9 +524,7 @@ class StorageQuotaService
             $this->writeLog($context, $user, $action, $sizeBytes, $op, $mediaUuid);
         });
 
-        $user->increment('storage_read_bytes', $sizeBytes);
-        $user->refresh();
-        $this->maybeNotifyAccessThresholds($user);
+        $this->maybeNotifyAccessThresholds($user->fresh());
     }
 
     public function resetAccessUsage(User $user): void
@@ -515,12 +538,53 @@ class StorageQuotaService
         $usage->download_requests = 0;
         $usage->stream_requests = 0;
         $usage->file_view_requests = 0;
+        $usage->access_warn_level = 0;
         $usage->save();
+    }
 
-        $user->update([
-            'storage_read_period_bytes' => 0,
-            'storage_access_warn_level' => 0,
-        ]);
+    /**
+     * Set Free-plan open-period storage limit (access/stream/download/view scale).
+     * Survives Free renew via StoragePoolService::rollPeriod carry-forward.
+     */
+    public function applyFreeStorageLimit(User $user, int $storageBytes): void
+    {
+        $context = $this->poolContext($user);
+        $assignment = $context->assignment->loadMissing('plan');
+        if ($assignment->plan?->slug !== 'free') {
+            throw ValidationException::withMessages([
+                'storage_limit_gb' => [
+                    'Custom storage limits can only be set for users on the Free plan.',
+                ],
+            ]);
+        }
+
+        $storageBytes = max(1, $storageBytes);
+        $usage = $context->usage;
+        $usage->storage_limit_bytes = $storageBytes;
+        $usage->monthly_access_limit_bytes = $storageBytes * self::FREE_ACCESS_MULTIPLIER;
+        $usage->streaming_limit_bytes = $storageBytes * self::FREE_STREAM_MULTIPLIER;
+        $usage->download_limit_bytes = $storageBytes * self::FREE_DOWNLOAD_MULTIPLIER;
+        $usage->file_view_limit_bytes = $storageBytes * self::FREE_FILE_VIEW_MULTIPLIER;
+        $usage->save();
+    }
+
+    /** Restore open-period limits from the Free plan catalog defaults. */
+    public function clearFreeStorageLimit(User $user): void
+    {
+        $context = $this->poolContext($user);
+        $assignment = $context->assignment->loadMissing('plan');
+        $plan = $assignment->plan;
+        if ($plan?->slug !== 'free') {
+            throw ValidationException::withMessages([
+                'storage_limit_gb' => [
+                    'Custom storage limits can only be cleared for users on the Free plan.',
+                ],
+            ]);
+        }
+
+        $usage = $context->usage;
+        $usage->applyPlanSnapshot($plan);
+        $usage->save();
     }
 
     public function ensureAccessPeriod(User $user): void
@@ -604,7 +668,7 @@ class StorageQuotaService
         ]);
         rsort($warnLevels);
 
-        $currentLevel = (int) $user->storage_access_warn_level;
+        $currentLevel = (int) $this->poolContext($user)->usage->access_warn_level;
         $newLevel = $currentLevel;
 
         foreach (array_values($warnLevels) as $index => $thresholdRemaining) {
@@ -618,7 +682,9 @@ class StorageQuotaService
             return;
         }
 
-        $user->update(['storage_access_warn_level' => $newLevel]);
+        $usage = $this->poolContext($user)->usage;
+        $usage->access_warn_level = $newLevel;
+        $usage->save();
 
         try {
             app(PushNotificationService::class)->notifyAccessUsageWarning(

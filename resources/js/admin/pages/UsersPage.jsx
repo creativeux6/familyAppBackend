@@ -56,6 +56,7 @@ export function UsersPage() {
   const [busyUuid, setBusyUuid] = useState('');
   const [selected, setSelected] = useState(null);
   const [assignPlanUuid, setAssignPlanUuid] = useState('');
+  const [overrideGb, setOverrideGb] = useState('');
 
   useEffect(() => {
     if (!isAdmin) return undefined;
@@ -124,6 +125,18 @@ export function UsersPage() {
       const detail = await api(`/admin/users/${uuid}`);
       setSelected(detail);
       setAssignPlanUuid(detail.storage?.plan?.uuid || detail.plan_assignment?.plan?.uuid || '');
+      const quotaBytes = detail.storage?.quota_bytes;
+      const planQuota = detail.storage?.plan?.storage_limit_bytes
+        ?? detail.storage?.plan?.quota_bytes;
+      const isCustom =
+        quotaBytes &&
+        planQuota &&
+        Number(quotaBytes) > Number(planQuota);
+      setOverrideGb(
+        isCustom
+          ? String(Math.round((Number(quotaBytes) / 1073741824) * 100) / 100)
+          : '',
+      );
     } catch (err) {
       setError(err.message || 'Could not load user');
     } finally {
@@ -196,10 +209,82 @@ export function UsersPage() {
     }
   }
 
+  async function saveStorageGrant() {
+    if (!selected?.user?.uuid) return;
+    setBusyUuid(selected.user.uuid);
+    setError('');
+    try {
+      const detail = await api(`/admin/users/${selected.user.uuid}/storage-grant`, {
+        method: 'PATCH',
+        body: { storage_limit_gb: Number(overrideGb) },
+      });
+      setSelected(detail);
+      const quotaBytes = detail.storage?.quota_bytes;
+      setOverrideGb(
+        quotaBytes
+          ? String(Math.round((Number(quotaBytes) / 1073741824) * 100) / 100)
+          : '',
+      );
+      await refreshList();
+    } catch (err) {
+      setError(err.message || 'Could not save storage grant');
+    } finally {
+      setBusyUuid('');
+    }
+  }
+
+  async function clearStorageGrant() {
+    if (!selected?.user?.uuid) return;
+    setBusyUuid(selected.user.uuid);
+    setError('');
+    try {
+      const detail = await api(`/admin/users/${selected.user.uuid}/storage-grant`, {
+        method: 'PATCH',
+        body: { clear: true },
+      });
+      setSelected(detail);
+      setOverrideGb('');
+      await refreshList();
+    } catch (err) {
+      setError(err.message || 'Could not clear storage grant');
+    } finally {
+      setBusyUuid('');
+    }
+  }
+
+  async function makeFree() {
+    if (!selected?.user?.uuid) return;
+    if (
+      !window.confirm(
+        'Move this user to Free immediately (no payment)? You can then set a custom storage limit.',
+      )
+    ) {
+      return;
+    }
+    setBusyUuid(selected.user.uuid);
+    setError('');
+    try {
+      const detail = await api(`/admin/users/${selected.user.uuid}/make-free`, {
+        method: 'POST',
+      });
+      setSelected(detail);
+      setAssignPlanUuid(detail.storage?.plan?.uuid || '');
+      await refreshList();
+    } catch (err) {
+      setError(err.message || 'Could not move user to Free');
+    } finally {
+      setBusyUuid('');
+    }
+  }
+
   const management = selected?.management;
   const storage = selected?.storage;
   const plan =
     storage?.plan || selected?.plan_assignment?.plan || null;
+  const isFreePlan = (plan?.slug || selected?.user?.plan_slug) === 'free';
+  const derivedAccessBytes = overrideGb
+    ? Math.round(Number(overrideGb) * 1073741824 * 3)
+    : storage?.access_quota_bytes;
   const cycleStart =
     selected?.plan_assignment?.starts_at || selected?.user?.plan_starts_at;
   const cycleEnd =
@@ -325,7 +410,7 @@ export function UsersPage() {
                         ) : null}
                       </td>
                       <td className="px-4 py-3 text-slate-600">
-                        {formatBytes(user.access_used_bytes ?? user.storage_read_period_bytes)}
+                        {formatBytes(user.access_used_bytes)}
                         {user.access_quota_bytes != null ? (
                           <span className="text-slate-400"> / {formatBytes(user.access_quota_bytes)}</span>
                         ) : null}
@@ -576,6 +661,65 @@ export function UsersPage() {
             >
               Reset monthly access usage
             </button>
+
+            <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
+              <h3 className="text-sm font-semibold text-slate-800">Free storage grant</h3>
+              <p className="text-xs text-slate-500">
+                Custom limits only for Free-plan users. Monthly access scales to 3× storage.
+              </p>
+              {isFreePlan ? (
+                <>
+                  <label className="block text-xs text-slate-500">
+                    Custom storage (GB)
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={overrideGb}
+                      onChange={(e) => setOverrideGb(e.target.value)}
+                      placeholder="e.g. 100"
+                      className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                    />
+                  </label>
+                  <p className="text-xs text-slate-500">
+                    Monthly access ≈ {derivedAccessBytes ? formatBytes(derivedAccessBytes) : '—'}
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={!overrideGb || busyUuid === selected.user?.uuid}
+                      onClick={saveStorageGrant}
+                      className="flex-1 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-40"
+                    >
+                      Save grant
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busyUuid === selected.user?.uuid}
+                      onClick={clearStorageGrant}
+                      className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-amber-700">
+                    User is on {plan?.name || 'a paid plan'}. Move to Free before setting a custom
+                    limit.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={busyUuid === selected.user?.uuid}
+                    onClick={makeFree}
+                    className="w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-40"
+                  >
+                    Move to Free
+                  </button>
+                </>
+              )}
+            </div>
 
             <div className="mt-4 border-t border-slate-100 pt-4">
               <label className="block text-xs text-slate-500">

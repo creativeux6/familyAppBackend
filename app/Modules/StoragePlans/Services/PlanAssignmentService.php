@@ -59,7 +59,7 @@ class PlanAssignmentService
                 'payment_retry_count' => 0,
             ]);
 
-            $this->poolService->openPeriod($assignment->load(['plan', 'user']), (int) $user->storage_used_bytes, $plan);
+            $this->poolService->openPeriod($assignment->load(['plan', 'user']), 0, $plan);
 
             return $assignment->fresh('plan');
         });

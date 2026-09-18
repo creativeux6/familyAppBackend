@@ -187,6 +187,65 @@ class AdminUserService
         return $this->show($user->uuid);
     }
 
+    /**
+     * Raise or clear Free-plan storage limit on the open usage period (access scales 3×).
+     *
+     * @param  array{clear?: bool, storage_limit_gb?: float|int|null}  $data
+     */
+    public function updateStorageGrant(User $admin, string $uuid, array $data, ?string $ip = null): array
+    {
+        $user = $this->requireUser($uuid);
+        $this->planAssignmentService->ensureDefaultFreePlan($user);
+        $assignment = $this->planAssignmentService->activeAssignment($user)?->loadMissing('plan');
+        $planSlug = $assignment?->plan?->slug;
+
+        if ($planSlug !== 'free') {
+            throw ValidationException::withMessages([
+                'storage_limit_gb' => [
+                    'Custom storage limits can only be set for users on the Free plan. Move them to Free first.',
+                ],
+            ]);
+        }
+
+        $clear = (bool) ($data['clear'] ?? false);
+        if ($clear) {
+            $this->quotaService->clearFreeStorageLimit($user->fresh());
+            $this->auditLogService->log($admin, 'user.storage_grant_cleared', 'user', $user->uuid, [], $ip);
+
+            return $this->show($user->uuid);
+        }
+
+        $gb = $data['storage_limit_gb'] ?? $data['storage_quota_override_gb'] ?? null;
+        if ($gb === null || (float) $gb <= 0) {
+            throw ValidationException::withMessages([
+                'storage_limit_gb' => ['Enter a storage limit in GB, or clear the grant.'],
+            ]);
+        }
+
+        $bytes = \App\Modules\StoragePlans\Support\StorageBytes::fromGib((float) $gb);
+        $this->quotaService->applyFreeStorageLimit($user->fresh(), $bytes);
+
+        $this->auditLogService->log($admin, 'user.storage_grant_updated', 'user', $user->uuid, [
+            'storage_limit_bytes' => $bytes,
+            'storage_limit_gb' => (float) $gb,
+        ], $ip);
+
+        return $this->show($user->uuid);
+    }
+
+    public function makeFree(User $admin, string $uuid, ?string $ip = null): array
+    {
+        $user = $this->requireUser($uuid);
+        $free = $this->planAssignmentService->ensureFreePlanRow();
+        $this->planAssignmentService->applyImmediatePlan($user, $free, 'admin_manual');
+
+        $this->auditLogService->log($admin, 'user.made_free', 'user', $user->uuid, [
+            'storage_plan_uuid' => $free->uuid,
+        ], $ip);
+
+        return $this->show($user->uuid);
+    }
+
     private function requireUser(string $uuid): User
     {
         $user = User::query()->where('uuid', $uuid)->first();
@@ -218,10 +277,10 @@ class AdminUserService
         return [
             'uuid' => $user->uuid,
             'display_name' => $user->display_name,
-            'storage_used_bytes' => $storage['stored_bytes'] ?? $user->storage_used_bytes,
-            'storage_read_bytes' => $user->storage_read_bytes,
-            'storage_read_period_bytes' => $storage['access_used_bytes'] ?? (int) $user->storage_read_period_bytes,
-            'storage_total_used_bytes' => $storage['stored_bytes'] ?? (int) $user->storage_used_bytes,
+            'storage_used_bytes' => $storage['stored_bytes'] ?? 0,
+            'storage_read_bytes' => $storage['lifetime_read_bytes'] ?? 0,
+            'storage_read_period_bytes' => $storage['access_used_bytes'] ?? 0,
+            'storage_total_used_bytes' => $storage['stored_bytes'] ?? 0,
             'access_used_bytes' => $storage['access_used_bytes'] ?? 0,
             'access_quota_bytes' => $storage['access_quota_bytes'] ?? null,
             'billing_status' => $storage['billing_status'] ?? $assignment?->billing_status,

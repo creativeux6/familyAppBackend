@@ -27,7 +27,7 @@ class GroupMessageService
         private readonly GroupService $groupService,
     ) {}
 
-    public function list(User $user, string $groupUuid, ?string $cursor, int $limit = 30): array
+    public function list(User $user, string $groupUuid, ?string $cursor, int $limit = 30, ?string $around = null): array
     {
         $this->groupService->requireGroupMember($user, $groupUuid);
         $limit = max(1, min(50, $limit));
@@ -36,6 +36,10 @@ class GroupMessageService
             ->where('group_uuid', $groupUuid)
             ->with('user:id,uuid,display_name')
             ->get();
+
+        if ($around) {
+            return $this->listAround($user, $groupUuid, $around, $limit, $members);
+        }
 
         $with = ['sender:id,uuid,display_name'];
         if ($this->messageSupportsReactions()) {
@@ -89,6 +93,93 @@ class GroupMessageService
         ];
     }
 
+    /**
+     * @param  Collection<int, GroupMember>  $members
+     * @return array<string, mixed>
+     */
+    private function listAround(
+        User $user,
+        string $groupUuid,
+        string $aroundUuid,
+        int $limit,
+        Collection $members,
+    ): array {
+        $with = ['sender:id,uuid,display_name'];
+        if ($this->messageSupportsReactions()) {
+            $with[] = 'reactions.user:id,uuid';
+        }
+
+        $target = Message::query()
+            ->withTrashed()
+            ->where('group_uuid', $groupUuid)
+            ->where('uuid', $aroundUuid)
+            ->with($with)
+            ->first();
+
+        if (! $target) {
+            throw ValidationException::withMessages([
+                'around' => ['Message not found in this group.'],
+            ]);
+        }
+
+        $beforeLimit = (int) floor(($limit - 1) / 2);
+        $afterLimit = max(0, $limit - 1 - $beforeLimit);
+
+        $older = Message::query()
+            ->withTrashed()
+            ->where('group_uuid', $groupUuid)
+            ->with($with)
+            ->where(function ($query) use ($target) {
+                $query->where('created_at', '<', $target->created_at)
+                    ->orWhere(function ($inner) use ($target) {
+                        $inner->where('created_at', $target->created_at)
+                            ->where('uuid', '<', $target->uuid);
+                    });
+            })
+            ->orderByDesc('created_at')
+            ->orderByDesc('uuid')
+            ->limit($beforeLimit)
+            ->get()
+            ->reverse()
+            ->values();
+
+        $newer = Message::query()
+            ->withTrashed()
+            ->where('group_uuid', $groupUuid)
+            ->with($with)
+            ->where(function ($query) use ($target) {
+                $query->where('created_at', '>', $target->created_at)
+                    ->orWhere(function ($inner) use ($target) {
+                        $inner->where('created_at', $target->created_at)
+                            ->where('uuid', '>', $target->uuid);
+                    });
+            })
+            ->orderBy('created_at')
+            ->orderBy('uuid')
+            ->limit($afterLimit)
+            ->get();
+
+        $window = $older
+            ->concat(collect([$target]))
+            ->concat($newer)
+            ->values();
+
+        // Match list() shape: newest first.
+        $desc = $window->sortByDesc(function (Message $m) {
+            return sprintf('%s|%s', $m->created_at?->format('Y-m-d H:i:s.u') ?? '', $m->uuid);
+        })->values();
+
+        return [
+            'messages' => $desc
+                ->map(fn (Message $message) => $this->formatMessage($message, $members, $user))
+                ->values()
+                ->all(),
+            'next_cursor' => null,
+            'around_uuid' => $aroundUuid,
+            'read_state' => $this->formatReadState($members),
+        ];
+    }
+
     public function send(
         User $user,
         string $groupUuid,
@@ -99,6 +190,7 @@ class GroupMessageService
         string $type = 'text',
         ?string $mediaFileUuid = null,
         ?string $clientMessageId = null,
+        array $mentionedUserUuids = [],
     ): array {
         $group = $this->groupService->requireGroupMember($user, $groupUuid);
 
@@ -135,6 +227,11 @@ class GroupMessageService
             ]);
         }
 
+        $mentionedUserUuids = array_values(array_unique(array_filter(
+            array_map('strval', $mentionedUserUuids),
+            static fn (string $uuid) => $uuid !== '',
+        )));
+
         try {
             $message = $this->createMessageWithRetry([
                 'uuid' => (string) Str::uuid(),
@@ -147,6 +244,7 @@ class GroupMessageService
                 'encryption_version' => $encryptionVersion,
                 'type' => $type,
                 'media_file_uuid' => $mediaFileUuid,
+                'mentioned_user_uuids' => $mentionedUserUuids === [] ? null : $mentionedUserUuids,
             ]);
         } catch (QueryException $e) {
             if ($clientMessageId && $this->isUniqueConstraintViolation($e)) {
@@ -168,7 +266,7 @@ class GroupMessageService
         $message->load('sender:id,uuid,display_name');
 
         try {
-            broadcast(new MessageSent($message));
+            broadcast(new MessageSent($message, $mentionedUserUuids));
         } catch (\Throwable $e) {
             Log::warning('Message broadcast failed after durable write', [
                 'message_uuid' => $message->uuid,
@@ -589,6 +687,7 @@ class GroupMessageService
             'other_member_count' => $otherMemberCount,
             'read_by' => $readBy,
             'reactions' => $isDeleted ? [] : $this->formatReactions($message, $viewer),
+            'mentioned_user_uuids' => array_values($message->mentioned_user_uuids ?? []),
         ];
 
         if ($isDeleted) {

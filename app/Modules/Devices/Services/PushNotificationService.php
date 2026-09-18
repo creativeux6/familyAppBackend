@@ -18,7 +18,10 @@ class PushNotificationService
         private readonly MediaShareInboxService $shareInboxService,
     ) {}
 
-    public function notifyNewMessage(Message $message): void
+    /**
+     * @param  list<string>  $mentionedUserUuids
+     */
+    public function notifyNewMessage(Message $message, array $mentionedUserUuids = []): void
     {
         if (! $this->fcmClient->isConfigured()) {
             return;
@@ -31,8 +34,11 @@ class PushNotificationService
             $message->sender_user_id,
         );
 
+        $mentioned = array_fill_keys($mentionedUserUuids, true);
+
         foreach ($recipients as $recipient) {
-            $this->notifyUserAboutMessage($recipient, $message);
+            $isMentioned = isset($mentioned[(string) $recipient->uuid]);
+            $this->notifyUserAboutMessage($recipient, $message, $isMentioned);
         }
     }
 
@@ -197,8 +203,11 @@ class PushNotificationService
         }
     }
 
-    private function notifyUserAboutMessage(User $recipient, Message $message): void
-    {
+    private function notifyUserAboutMessage(
+        User $recipient,
+        Message $message,
+        bool $mentioned = false,
+    ): void {
         $tokens = $this->tokenService->tokensForUser($recipient);
         if ($tokens === []) {
             return;
@@ -209,19 +218,21 @@ class PushNotificationService
         $preview = match ($message->type) {
             'media_reference' => 'Sent an attachment',
             'system' => 'System message',
-            default => 'New message',
+            default => $mentioned ? 'Mentioned you' : 'New message',
         };
+        $title = $mentioned ? "$senderName mentioned you" : $senderName;
 
         foreach ($tokens as $token) {
             $this->fcmClient->send(
                 $token,
-                $senderName,
+                $title,
                 $preview,
                 [
                     'type' => 'message.sent',
                     'group_uuid' => $message->group_uuid,
                     'message_uuid' => $message->uuid,
                     'badge' => (string) $badge,
+                    'mentioned' => $mentioned ? '1' : '0',
                     'route' => '/groups/'.$message->group_uuid.'/chat',
                 ],
                 $badge,

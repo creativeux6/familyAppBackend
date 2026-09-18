@@ -28,6 +28,7 @@ class Message extends Model
         'encryption_version',
         'type',
         'media_file_uuid',
+        'mentioned_user_uuids',
         'edited_at',
     ];
 
@@ -37,6 +38,7 @@ class Message extends Model
             'encryption_generation' => 'integer',
             'encryption_version' => 'integer',
             'edited_at' => 'datetime',
+            'mentioned_user_uuids' => 'array',
         ];
     }
 

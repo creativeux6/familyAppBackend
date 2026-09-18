@@ -82,7 +82,7 @@ class StoragePoolService
             return $usage;
         }
 
-        return $this->openPeriod($assignment, (int) ($assignment->user?->storage_used_bytes ?? 0));
+        return $this->openPeriod($assignment, 0);
     }
 
     public function openPeriod(UserPlanAssignment $assignment, int $carryStock = 0, ?StoragePlan $plan = null): UserStorageUsage
@@ -142,13 +142,14 @@ class StoragePoolService
     public function rollPeriod(UserPlanAssignment $assignment, ?StoragePlan $nextPlan = null): UserStorageUsage
     {
         return DB::transaction(function () use ($assignment, $nextPlan) {
+            $assignment->loadMissing('plan');
             $current = UserStorageUsage::query()
                 ->where('assignment_id', $assignment->id)
                 ->whereNull('closed_at')
                 ->lockForUpdate()
                 ->first();
 
-            $stock = (int) ($current?->storage_used_bytes ?? $assignment->user?->storage_used_bytes ?? 0);
+            $stock = (int) ($current?->storage_used_bytes ?? 0);
             if ($current) {
                 $current->closed_at = now();
                 $current->period_end = $current->period_end ?? now();
@@ -157,9 +158,22 @@ class StoragePoolService
 
             $plan = $nextPlan ?? $assignment->plan;
             $usage = $this->openPeriod($assignment, $stock, $plan);
+
+            // Free renew: reset meters via a new period row, but keep the prior
+            // storage/access limits (admin-raised Free caps). Paid plans keep
+            // catalog plan snapshots from openPeriod.
+            if ($plan?->slug === 'free' && $current !== null) {
+                $usage->storage_limit_bytes = (int) $current->storage_limit_bytes;
+                $usage->monthly_access_limit_bytes = (int) $current->monthly_access_limit_bytes;
+                $usage->streaming_limit_bytes = (int) $current->streaming_limit_bytes;
+                $usage->download_limit_bytes = (int) $current->download_limit_bytes;
+                $usage->file_view_limit_bytes = (int) $current->file_view_limit_bytes;
+                $usage->save();
+            }
+
             $this->resetRosterToOwner($assignment, $usage);
 
-            return $usage;
+            return $usage->fresh();
         });
     }
 

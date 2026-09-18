@@ -19,6 +19,9 @@ class SendMessagePushNotification implements ShouldQueue
 
     public function handle(MessageSent $event): void
     {
-        $this->pushNotifications->notifyNewMessage($event->message);
+        $this->pushNotifications->notifyNewMessage(
+            $event->message,
+            $event->mentionedUserUuids,
+        );
     }
 }

@@ -14,8 +14,12 @@ class MessageSent implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
+    /**
+     * @param  list<string>  $mentionedUserUuids
+     */
     public function __construct(
         public Message $message,
+        public array $mentionedUserUuids = [],
     ) {}
 
     /** @return array<int, PrivateChannel> */

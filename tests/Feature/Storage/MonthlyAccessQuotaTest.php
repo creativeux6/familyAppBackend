@@ -46,9 +46,6 @@ class MonthlyAccessQuotaTest extends TestCase
             'encryption_version' => 1,
             'status' => 'active',
         ]);
-        $user->update([
-            'storage_read_period_bytes' => 9_000_000_000,
-        ]);
 
         $response = $this->getJson('/api/v1/storage/quota');
         $response->assertSuccessful()
@@ -111,18 +108,16 @@ class MonthlyAccessQuotaTest extends TestCase
             ->first();
         $usage->downloaded_bytes = 5_000_000_000;
         $usage->syncMonthlyAccess();
+        $usage->access_warn_level = 2;
         $usage->save();
-        $target->update([
-            'storage_access_warn_level' => 2,
-        ]);
 
         $this->actingAsUser($admin);
         $response = $this->postJson("/api/v1/admin/users/{$target->uuid}/access-usage/reset");
         $response->assertSuccessful()
             ->assertJsonPath('storage.access_used_bytes', 0);
 
-        $this->assertSame(0, (int) $target->fresh()->storage_read_period_bytes);
-        $this->assertSame(0, (int) $target->fresh()->storage_access_warn_level);
+        $usage = $usage->fresh();
+        $this->assertSame(0, (int) $usage->access_warn_level);
     }
 
     public function test_assert_can_store_ignores_access_usage(): void

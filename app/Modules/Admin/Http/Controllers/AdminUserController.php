@@ -5,6 +5,7 @@ namespace App\Modules\Admin\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Admin\Http\Requests\AssignRoleRequest;
 use App\Modules\Admin\Http\Requests\UpdateAdminUserRequest;
+use App\Modules\Admin\Http\Requests\UpdateStorageGrantRequest;
 use App\Modules\Admin\Services\AdminUserService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -154,6 +155,43 @@ class AdminUserController extends Controller
     public function resetAccessUsage(Request $request, string $uuid): JsonResponse
     {
         return response()->json($this->userService->resetAccessUsage(
+            $request->user(),
+            $uuid,
+            $request->ip(),
+        ));
+    }
+
+    #[OA\Patch(
+        path: '/admin/users/{uuid}/storage-grant',
+        operationId: 'adminUsersUpdateStorageGrant',
+        summary: 'Set or clear Free-plan storage override for a user',
+        tags: ['Admin'],
+        security: [['bearerAuth' => []]],
+        parameters: [new OA\Parameter(name: 'uuid', in: 'path', required: true, schema: new OA\Schema(type: 'string', format: 'uuid'))],
+        responses: [new OA\Response(response: 200, description: 'Storage grant updated')]
+    )]
+    public function updateStorageGrant(UpdateStorageGrantRequest $request, string $uuid): JsonResponse
+    {
+        return response()->json($this->userService->updateStorageGrant(
+            $request->user(),
+            $uuid,
+            $request->validated(),
+            $request->ip(),
+        ));
+    }
+
+    #[OA\Post(
+        path: '/admin/users/{uuid}/make-free',
+        operationId: 'adminUsersMakeFree',
+        summary: 'Move user to Free plan immediately (no payment)',
+        tags: ['Admin'],
+        security: [['bearerAuth' => []]],
+        parameters: [new OA\Parameter(name: 'uuid', in: 'path', required: true, schema: new OA\Schema(type: 'string', format: 'uuid'))],
+        responses: [new OA\Response(response: 200, description: 'User moved to Free')]
+    )]
+    public function makeFree(Request $request, string $uuid): JsonResponse
+    {
+        return response()->json($this->userService->makeFree(
             $request->user(),
             $uuid,
             $request->ip(),

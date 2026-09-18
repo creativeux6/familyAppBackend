@@ -27,6 +27,7 @@ class GroupMessageController extends Controller
                 $uuid,
                 $request->query('cursor'),
                 (int) $request->query('limit', 30),
+                $request->query('around'),
             )
         );
     }
@@ -44,6 +45,7 @@ class GroupMessageController extends Controller
             $request->input('type', 'text'),
             $request->validated('media_file_uuid'),
             $request->validated('client_message_id'),
+            $request->validated('mentioned_user_uuids') ?? [],
         );
 
         return response()->json($result, 201);

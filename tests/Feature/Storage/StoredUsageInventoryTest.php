@@ -64,7 +64,6 @@ class StoredUsageInventoryTest extends TestCase
     {
         $user = $this->actingAsUser($this->createUserWithFamily());
         app(StorageQuotaService::class)->ensureAccessPeriod($user);
-        $user->update(['storage_used_bytes' => 50_000_000]);
         $usage = UserStorageUsage::query()->whereNull('closed_at')->first();
         $this->assertNotNull($usage);
         $usage->update(['storage_used_bytes' => 50_000_000]);

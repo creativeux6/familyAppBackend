@@ -21,6 +21,8 @@ class SendMessageRequest extends FormRequest
             'type' => ['sometimes', 'in:text,media_reference,system'],
             'media_file_uuid' => ['nullable', 'uuid'],
             'client_message_id' => ['sometimes', 'nullable', 'uuid'],
+            'mentioned_user_uuids' => ['sometimes', 'array'],
+            'mentioned_user_uuids.*' => ['uuid'],
         ];
     }
 }
