@@ -6,6 +6,7 @@ use App\Models\GroupMember;
 use App\Models\GroupEncryptionGeneration;
 use App\Models\Message;
 use App\Models\User;
+use App\Modules\Groups\Events\GroupDeliveredUpdated;
 use App\Modules\Groups\Events\GroupReadUpdated;
 use App\Modules\Groups\Events\MessageDeleted;
 use App\Modules\Groups\Events\MessageReactionsUpdated;
@@ -263,6 +264,10 @@ class GroupMessageService
             $membership->update([
                 'last_read_at' => now(),
                 'last_read_message_uuid' => $latestMessage->uuid,
+                'last_delivered_at' => $membership->last_delivered_at === null
+                    || $latestMessage->created_at->greaterThan($membership->last_delivered_at)
+                    ? now()
+                    : $membership->last_delivered_at,
             ]);
 
             broadcast(new GroupReadUpdated($membership->fresh(['user:id,uuid,display_name'])));
@@ -271,6 +276,65 @@ class GroupMessageService
         return [
             'last_read_at' => $membership->fresh()->last_read_at?->toIso8601String(),
             'last_read_message_uuid' => $membership->fresh()->last_read_message_uuid,
+        ];
+    }
+
+    public function markDelivered(User $user, string $groupUuid, ?string $messageUuid = null): array
+    {
+        $this->groupService->requireGroupMember($user, $groupUuid);
+
+        $membership = GroupMember::query()
+            ->where('group_uuid', $groupUuid)
+            ->where('user_id', $user->id)
+            ->firstOrFail();
+
+        $latestMessage = null;
+
+        if ($messageUuid) {
+            $latestMessage = Message::query()
+                ->where('group_uuid', $groupUuid)
+                ->where('uuid', $messageUuid)
+                ->first();
+
+            if (! $latestMessage) {
+                throw ValidationException::withMessages([
+                    'message_uuid' => ['Message not found in this group.'],
+                ]);
+            }
+        } else {
+            $latestMessage = Message::query()
+                ->where('group_uuid', $groupUuid)
+                ->orderByDesc('created_at')
+                ->orderByDesc('uuid')
+                ->first();
+        }
+
+        if (! $latestMessage) {
+            return [
+                'last_delivered_at' => $membership->last_delivered_at?->toIso8601String(),
+            ];
+        }
+
+        // Do not mark own messages as delivered by the sender.
+        if ($latestMessage->sender_user_id === $user->id) {
+            return [
+                'last_delivered_at' => $membership->last_delivered_at?->toIso8601String(),
+            ];
+        }
+
+        $shouldUpdate = $membership->last_delivered_at === null
+            || $latestMessage->created_at->greaterThan($membership->last_delivered_at);
+
+        if ($shouldUpdate) {
+            $membership->update([
+                'last_delivered_at' => now(),
+            ]);
+
+            broadcast(new GroupDeliveredUpdated($membership->fresh(['user:id,uuid,display_name'])));
+        }
+
+        return [
+            'last_delivered_at' => $membership->fresh()->last_delivered_at?->toIso8601String(),
         ];
     }
 
@@ -480,6 +544,7 @@ class GroupMessageService
         $isDeleted = $message->trashed();
         $readBy = [];
         $readCount = 0;
+        $deliveredCount = 0;
         $otherMemberCount = 0;
 
         if ($members !== null) {
@@ -489,6 +554,11 @@ class GroupMessageService
                 }
 
                 $otherMemberCount++;
+
+                if ($member->last_delivered_at && $message->created_at
+                    && $member->last_delivered_at->greaterThanOrEqualTo($message->created_at)) {
+                    $deliveredCount++;
+                }
 
                 if ($member->last_read_at && $message->created_at
                     && $member->last_read_at->greaterThanOrEqualTo($message->created_at)) {
@@ -515,6 +585,7 @@ class GroupMessageService
             'edited_at' => $message->edited_at?->toIso8601String(),
             'is_deleted' => $isDeleted,
             'read_count' => $readCount,
+            'delivered_count' => $deliveredCount,
             'other_member_count' => $otherMemberCount,
             'read_by' => $readBy,
             'reactions' => $isDeleted ? [] : $this->formatReactions($message, $viewer),

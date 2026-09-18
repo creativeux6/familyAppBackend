@@ -14,6 +14,7 @@ class GroupMember extends Model
         'joined_at',
         'last_read_at',
         'last_read_message_uuid',
+        'last_delivered_at',
     ];
 
     protected function casts(): array
@@ -21,6 +22,7 @@ class GroupMember extends Model
         return [
             'joined_at' => 'datetime',
             'last_read_at' => 'datetime',
+            'last_delivered_at' => 'datetime',
         ];
     }
 

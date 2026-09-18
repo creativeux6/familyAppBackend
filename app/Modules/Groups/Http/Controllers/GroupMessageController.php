@@ -60,6 +60,17 @@ class GroupMessageController extends Controller
         );
     }
 
+    public function markDelivered(MarkGroupReadRequest $request, string $uuid): JsonResponse
+    {
+        return response()->json(
+            $this->messageService->markDelivered(
+                $request->user(),
+                $uuid,
+                $request->validated('message_uuid'),
+            )
+        );
+    }
+
     public function update(UpdateMessageRequest $request, string $uuid, string $messageUuid): JsonResponse
     {
         return response()->json(
