@@ -5,6 +5,8 @@ import { useAuth } from '../auth';
 import { formatBytes, formatPriceCents, formatUsd, PaginationBar } from '../components';
 import { Shimmer } from '../shimmer';
 
+const PER_PAGE = 20;
+
 function UsageBar({ used, limit, label }) {
   const u = Number(used) || 0;
   const l = Number(limit) || 0;
