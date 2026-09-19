@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
+import { useAuth } from '../auth';
 import { formatBytes, formatUsd } from '../components';
 
 function StatCard({ label, value }) {

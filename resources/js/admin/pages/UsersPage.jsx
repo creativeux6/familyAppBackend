@@ -509,6 +509,100 @@ export function UsersPage() {
               </button>
             </div>
 
+            <div className="mb-4 space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <h3 className="text-sm font-semibold text-slate-800">Storage limit (Free)</h3>
+              <p className="text-xs text-slate-500">
+                Custom limits only for Free-plan users. Monthly access scales to 3× storage.
+                Current quota:{' '}
+                {storage?.quota_bytes != null ? formatBytes(storage.quota_bytes) : '—'}
+              </p>
+              {isFreePlan ? (
+                <>
+                  <label className="block text-xs text-slate-500">
+                    Custom storage (GB)
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={overrideGb}
+                      onChange={(e) => setOverrideGb(e.target.value)}
+                      placeholder="e.g. 100"
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                    />
+                  </label>
+                  <p className="text-xs text-slate-500">
+                    Monthly access ≈ {derivedAccessBytes ? formatBytes(derivedAccessBytes) : '—'}
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={!overrideGb || busyUuid === selected.user?.uuid}
+                      onClick={saveStorageGrant}
+                      className="flex-1 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-40"
+                    >
+                      Save grant
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busyUuid === selected.user?.uuid}
+                      onClick={clearStorageGrant}
+                      className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-amber-700">
+                    User is on {plan?.name || 'a paid plan'}. Move to Free before setting a custom
+                    limit.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={busyUuid === selected.user?.uuid}
+                    onClick={makeFree}
+                    className="w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-40"
+                  >
+                    Move to Free
+                  </button>
+                </>
+              )}
+
+              <button
+                type="button"
+                disabled={busyUuid === selected.user?.uuid}
+                onClick={resetAccessUsage}
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+              >
+                Reset monthly access usage
+              </button>
+
+              <label className="block text-xs text-slate-500">
+                Assign storage plan
+                <select
+                  value={assignPlanUuid}
+                  onChange={(e) => setAssignPlanUuid(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                >
+                  <option value="">Select plan…</option>
+                  {plans.map((p) => (
+                    <option key={p.uuid} value={p.uuid}>
+                      {p.name} ({formatBytes(p.quota_bytes)})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                disabled={!assignPlanUuid || busyUuid === selected.user?.uuid}
+                onClick={assignPlan}
+                className="w-full rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-40"
+              >
+                Save plan assignment
+              </button>
+            </div>
+
             <dl className="space-y-3 text-sm">
               <div className="flex justify-between gap-4 border-b border-slate-100 pb-2">
                 <dt className="text-slate-500">Account type</dt>
@@ -652,100 +746,6 @@ export function UsersPage() {
               Stream/download/view costs are admin-only. Billing advances price only — stored usage
               is not reset.
             </p>
-
-            <button
-              type="button"
-              disabled={busyUuid === selected.user?.uuid}
-              onClick={resetAccessUsage}
-              className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
-            >
-              Reset monthly access usage
-            </button>
-
-            <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
-              <h3 className="text-sm font-semibold text-slate-800">Free storage grant</h3>
-              <p className="text-xs text-slate-500">
-                Custom limits only for Free-plan users. Monthly access scales to 3× storage.
-              </p>
-              {isFreePlan ? (
-                <>
-                  <label className="block text-xs text-slate-500">
-                    Custom storage (GB)
-                    <input
-                      type="number"
-                      min="1"
-                      step="1"
-                      value={overrideGb}
-                      onChange={(e) => setOverrideGb(e.target.value)}
-                      placeholder="e.g. 100"
-                      className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                    />
-                  </label>
-                  <p className="text-xs text-slate-500">
-                    Monthly access ≈ {derivedAccessBytes ? formatBytes(derivedAccessBytes) : '—'}
-                  </p>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      disabled={!overrideGb || busyUuid === selected.user?.uuid}
-                      onClick={saveStorageGrant}
-                      className="flex-1 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-40"
-                    >
-                      Save grant
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busyUuid === selected.user?.uuid}
-                      onClick={clearStorageGrant}
-                      className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
-                    >
-                      Clear
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <p className="text-xs text-amber-700">
-                    User is on {plan?.name || 'a paid plan'}. Move to Free before setting a custom
-                    limit.
-                  </p>
-                  <button
-                    type="button"
-                    disabled={busyUuid === selected.user?.uuid}
-                    onClick={makeFree}
-                    className="w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-40"
-                  >
-                    Move to Free
-                  </button>
-                </>
-              )}
-            </div>
-
-            <div className="mt-4 border-t border-slate-100 pt-4">
-              <label className="block text-xs text-slate-500">
-                Assign storage plan
-                <select
-                  value={assignPlanUuid}
-                  onChange={(e) => setAssignPlanUuid(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                >
-                  <option value="">Select plan…</option>
-                  {plans.map((p) => (
-                    <option key={p.uuid} value={p.uuid}>
-                      {p.name} ({formatBytes(p.quota_bytes)})
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button
-                type="button"
-                disabled={!assignPlanUuid || busyUuid === selected.user?.uuid}
-                onClick={assignPlan}
-                className="mt-3 w-full rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-40"
-              >
-                Save plan assignment
-              </button>
-            </div>
           </div>
         </div>
       ) : null}
