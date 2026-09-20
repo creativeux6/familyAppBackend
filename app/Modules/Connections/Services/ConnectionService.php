@@ -5,12 +5,18 @@ namespace App\Modules\Connections\Services;
 use App\Models\Connection;
 use App\Models\FamilyMember;
 use App\Models\User;
+use App\Modules\Avatars\Services\AvatarService;
 use App\Modules\Connections\Events\ConnectionUpdated;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class ConnectionService
 {
+    private const USER_AVATAR_COLUMNS = 'id,uuid,display_name,avatar_thumb_key,avatar_master_key,avatar_updated_at';
+
+    public function __construct(
+        private readonly AvatarService $avatars,
+    ) {}
     /** @return array<string, mixed> */
     public function suggestions(User $user): array
     {
@@ -21,7 +27,7 @@ class ConnectionService
             ->where('is_anonymous', false)
             ->whereNotNull('user_id')
             ->where('user_id', '!=', $user->id)
-            ->with('user:id,uuid,display_name,is_anonymous')
+            ->with('user:'.self::USER_AVATAR_COLUMNS.',is_anonymous')
             ->get()
             ->filter(fn (FamilyMember $m) => $m->user !== null && ! $m->user->is_anonymous)
             ->map(fn (FamilyMember $m) => $this->formatSuggestionMember($user, $m))
@@ -42,7 +48,7 @@ class ConnectionService
                 $q->where('requester_user_id', $user->id)
                     ->orWhere('recipient_user_id', $user->id);
             })
-            ->with(['requester:id,uuid,display_name', 'recipient:id,uuid,display_name']);
+            ->with(['requester:'.self::USER_AVATAR_COLUMNS, 'recipient:'.self::USER_AVATAR_COLUMNS]);
 
         if ($status) {
             $query->where('status', $status);
@@ -70,7 +76,7 @@ class ConnectionService
         $connection = $this->createOrRefreshRequest($user, $target);
         $this->notifyParty($user, $target, $connection, 'request_sent');
 
-        return $this->formatConnection($connection->load(['requester:id,uuid,display_name', 'recipient:id,uuid,display_name']), $user);
+        return $this->formatConnection($connection->load(['requester:'.self::USER_AVATAR_COLUMNS, 'recipient:'.self::USER_AVATAR_COLUMNS]), $user);
     }
 
     /**
@@ -124,7 +130,7 @@ class ConnectionService
             'connected_at' => now(),
         ]);
 
-        $fresh = $connection->fresh(['requester:id,uuid,display_name', 'recipient:id,uuid,display_name']);
+        $fresh = $connection->fresh(['requester:'.self::USER_AVATAR_COLUMNS, 'recipient:'.self::USER_AVATAR_COLUMNS]);
         $other = $fresh->requester_user_id === $user->id ? $fresh->recipient : $fresh->requester;
         $this->notifyParty($user, $other, $fresh, 'accepted');
 
@@ -150,7 +156,7 @@ class ConnectionService
 
         $connection->update(['status' => 'rejected', 'connected_at' => null]);
 
-        $fresh = $connection->fresh(['requester:id,uuid,display_name', 'recipient:id,uuid,display_name']);
+        $fresh = $connection->fresh(['requester:'.self::USER_AVATAR_COLUMNS, 'recipient:'.self::USER_AVATAR_COLUMNS]);
         $other = $fresh->requester_user_id === $user->id ? $fresh->recipient : $fresh->requester;
         $this->notifyParty($user, $other, $fresh, 'rejected');
 
@@ -170,7 +176,7 @@ class ConnectionService
 
         $connection->update(['status' => 'disconnected', 'connected_at' => null]);
 
-        $fresh = $connection->fresh(['requester:id,uuid,display_name', 'recipient:id,uuid,display_name']);
+        $fresh = $connection->fresh(['requester:'.self::USER_AVATAR_COLUMNS, 'recipient:'.self::USER_AVATAR_COLUMNS]);
         $other = $fresh->requester_user_id === $user->id ? $fresh->recipient : $fresh->requester;
         $this->notifyParty($user, $other, $fresh, 'disconnected');
 
@@ -190,7 +196,7 @@ class ConnectionService
 
         $connection->update(['status' => 'blocked', 'connected_at' => null]);
 
-        $fresh = $connection->fresh(['requester:id,uuid,display_name', 'recipient:id,uuid,display_name']);
+        $fresh = $connection->fresh(['requester:'.self::USER_AVATAR_COLUMNS, 'recipient:'.self::USER_AVATAR_COLUMNS]);
         $other = $fresh->requester_user_id === $user->id ? $fresh->recipient : $fresh->requester;
         $this->notifyParty($user, $other, $fresh, 'blocked');
 
@@ -219,7 +225,7 @@ class ConnectionService
                 $this->notifyParty($user, $target, $connection, 'request_sent');
                 $created++;
                 $connections[] = $this->formatConnection(
-                    $connection->load(['requester:id,uuid,display_name', 'recipient:id,uuid,display_name']),
+                    $connection->load(['requester:'.self::USER_AVATAR_COLUMNS, 'recipient:'.self::USER_AVATAR_COLUMNS]),
                     $user,
                 );
             } catch (ValidationException) {
@@ -362,6 +368,7 @@ class ConnectionService
             'member_uuid' => $member->uuid,
             'connection_uuid' => $connection?->uuid,
             'connection_status' => $this->perspectiveStatus($connection, $user),
+            'avatar' => $this->avatars->userAvatarPayload($member->user),
         ];
     }
 
@@ -380,6 +387,7 @@ class ConnectionService
             'other_user' => [
                 'uuid' => $other->uuid,
                 'display_name' => $other->display_name,
+                'avatar' => $this->avatars->userAvatarPayload($other),
             ],
         ];
     }

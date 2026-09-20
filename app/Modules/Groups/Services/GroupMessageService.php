@@ -6,6 +6,7 @@ use App\Models\GroupMember;
 use App\Models\GroupEncryptionGeneration;
 use App\Models\Message;
 use App\Models\User;
+use App\Modules\Avatars\Services\AvatarService;
 use App\Modules\Groups\Events\GroupDeliveredUpdated;
 use App\Modules\Groups\Events\GroupReadUpdated;
 use App\Modules\Groups\Events\MessageDeleted;
@@ -23,8 +24,11 @@ use Illuminate\Validation\ValidationException;
 
 class GroupMessageService
 {
+    private const USER_AVATAR_COLUMNS = 'id,uuid,display_name,avatar_thumb_key,avatar_master_key,avatar_updated_at';
+
     public function __construct(
         private readonly GroupService $groupService,
+        private readonly AvatarService $avatars,
     ) {}
 
     public function list(User $user, string $groupUuid, ?string $cursor, int $limit = 30, ?string $around = null): array
@@ -34,14 +38,14 @@ class GroupMessageService
 
         $members = GroupMember::query()
             ->where('group_uuid', $groupUuid)
-            ->with('user:id,uuid,display_name')
+            ->with('user:'.self::USER_AVATAR_COLUMNS)
             ->get();
 
         if ($around) {
             return $this->listAround($user, $groupUuid, $around, $limit, $members);
         }
 
-        $with = ['sender:id,uuid,display_name'];
+        $with = ['sender:'.self::USER_AVATAR_COLUMNS];
         if ($this->messageSupportsReactions()) {
             $with[] = 'reactions.user:id,uuid';
         }
@@ -69,7 +73,7 @@ class GroupMessageService
             $fallback = Message::query()
                 ->withTrashed()
                 ->where('group_uuid', $groupUuid)
-                ->with(['sender:id,uuid,display_name'])
+                ->with(['sender:'.self::USER_AVATAR_COLUMNS])
                 ->orderByDesc('created_at')
                 ->orderByDesc('uuid');
 
@@ -104,7 +108,7 @@ class GroupMessageService
         int $limit,
         Collection $members,
     ): array {
-        $with = ['sender:id,uuid,display_name'];
+        $with = ['sender:'.self::USER_AVATAR_COLUMNS];
         if ($this->messageSupportsReactions()) {
             $with[] = 'reactions.user:id,uuid';
         }
@@ -199,7 +203,7 @@ class GroupMessageService
                 ->where('group_uuid', $group->uuid)
                 ->where('sender_user_id', $user->id)
                 ->where('client_message_id', $clientMessageId)
-                ->with('sender:id,uuid,display_name')
+                ->with('sender:'.self::USER_AVATAR_COLUMNS)
                 ->first();
 
             if ($existing) {
@@ -252,7 +256,7 @@ class GroupMessageService
                     ->where('group_uuid', $group->uuid)
                     ->where('sender_user_id', $user->id)
                     ->where('client_message_id', $clientMessageId)
-                    ->with('sender:id,uuid,display_name')
+                    ->with('sender:'.self::USER_AVATAR_COLUMNS)
                     ->first();
 
                 if ($existing) {
@@ -263,7 +267,7 @@ class GroupMessageService
             throw $e;
         }
 
-        $message->load('sender:id,uuid,display_name');
+        $message->load('sender:'.self::USER_AVATAR_COLUMNS);
 
         try {
             broadcast(new MessageSent($message, $mentionedUserUuids));
@@ -368,7 +372,7 @@ class GroupMessageService
                     : $membership->last_delivered_at,
             ]);
 
-            broadcast(new GroupReadUpdated($membership->fresh(['user:id,uuid,display_name'])));
+            broadcast(new GroupReadUpdated($membership->fresh(['user:'.self::USER_AVATAR_COLUMNS])));
         }
 
         return [
@@ -428,7 +432,7 @@ class GroupMessageService
                 'last_delivered_at' => now(),
             ]);
 
-            broadcast(new GroupDeliveredUpdated($membership->fresh(['user:id,uuid,display_name'])));
+            broadcast(new GroupDeliveredUpdated($membership->fresh(['user:'.self::USER_AVATAR_COLUMNS])));
         }
 
         return [
@@ -483,7 +487,7 @@ class GroupMessageService
             'edited_at' => now(),
         ]);
 
-        $message->load('sender:id,uuid,display_name');
+        $message->load('sender:'.self::USER_AVATAR_COLUMNS);
 
         broadcast(new MessageUpdated($message->fresh()));
 
@@ -612,7 +616,7 @@ class GroupMessageService
     {
         $message = Message::query()
             ->where('group_uuid', $groupUuid)
-            ->with('sender:id,uuid,display_name')
+            ->with('sender:'.self::USER_AVATAR_COLUMNS)
             ->orderByDesc('created_at')
             ->orderByDesc('uuid')
             ->first();
@@ -675,6 +679,7 @@ class GroupMessageService
             'group_uuid' => $message->group_uuid,
             'sender_user_uuid' => $message->sender->uuid,
             'sender_display_name' => $message->sender->display_name,
+            'sender_avatar' => $this->avatars->userAvatarPayload($message->sender),
             'encryption_generation' => $message->encryption_generation,
             'encryption_version' => $message->encryption_version,
             'type' => $message->type,

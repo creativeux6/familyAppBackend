@@ -10,6 +10,7 @@ use App\Models\GroupEncryptionGeneration;
 use App\Models\GroupMember;
 use App\Models\Message;
 use App\Models\User;
+use App\Modules\Avatars\Services\AvatarService;
 use App\Modules\FamilyTree\Enums\TreeViewMode;
 use App\Modules\Groups\Events\GroupDeleted;
 use Illuminate\Support\Collection;
@@ -19,9 +20,12 @@ use Illuminate\Validation\ValidationException;
 
 class GroupService
 {
+    private const USER_AVATAR_COLUMNS = 'id,uuid,display_name,avatar_thumb_key,avatar_master_key,avatar_updated_at';
+
     public function __construct(
         private readonly ConnectedMemberGuard $connectedMemberGuard,
         private readonly FamilyGraphRepositoryInterface $graphRepository,
+        private readonly AvatarService $avatars,
     ) {}
 
     /** @param  list<string>  $memberUserUuids */
@@ -106,7 +110,7 @@ class GroupService
                 ]);
             }
 
-            return $this->formatGroup($existing->load(['members.user:id,uuid,display_name']), $user);
+            return $this->formatGroup($existing->load(['members.user:'.self::USER_AVATAR_COLUMNS]), $user);
         }
 
         return DB::transaction(function () use ($user, $other, $directKey) {
@@ -132,7 +136,7 @@ class GroupService
 
             $group->update(['member_count' => $group->members()->count()]);
 
-            return $this->formatGroup($group->fresh(['members.user:id,uuid,display_name']), $user);
+            return $this->formatGroup($group->fresh(['members.user:'.self::USER_AVATAR_COLUMNS]), $user);
         });
     }
 
@@ -141,7 +145,7 @@ class GroupService
     {
         $groups = Group::query()
             ->whereHas('members', fn ($q) => $q->where('user_id', $user->id))
-            ->with(['members.user:id,uuid,display_name'])
+            ->with(['members.user:'.self::USER_AVATAR_COLUMNS])
             ->get()
             ->map(fn (Group $group) => $this->formatGroup($group, $user))
             ->sortByDesc(function (array $group) {
@@ -162,7 +166,7 @@ class GroupService
     {
         $group = $this->requireGroupMember($user, $groupUuid);
 
-        return $this->formatGroup($group->load(['members.user:id,uuid,display_name']), $user);
+        return $this->formatGroup($group->load(['members.user:'.self::USER_AVATAR_COLUMNS]), $user);
     }
 
     public function update(User $user, string $groupUuid, array $data): array
@@ -188,7 +192,7 @@ class GroupService
             $group->update($updates);
         }
 
-        return $this->formatGroup($group->fresh(['members.user:id,uuid,display_name']));
+        return $this->formatGroup($group->fresh(['members.user:'.self::USER_AVATAR_COLUMNS]));
     }
 
     /** @param  list<string>  $userUuids */
@@ -225,7 +229,7 @@ class GroupService
 
         $group->update(['member_count' => $group->members()->count()]);
 
-        return $this->formatGroup($group->fresh(['members.user:id,uuid,display_name']));
+        return $this->formatGroup($group->fresh(['members.user:'.self::USER_AVATAR_COLUMNS]));
     }
 
     public function removeMember(User $user, string $groupUuid, string $targetUserUuid): array
@@ -387,7 +391,7 @@ class GroupService
 
         $lastMessage = Message::query()
             ->where('group_uuid', $group->uuid)
-            ->with('sender:id,uuid,display_name')
+            ->with('sender:'.self::USER_AVATAR_COLUMNS)
             ->orderByDesc('created_at')
             ->orderByDesc('uuid')
             ->first();
@@ -419,6 +423,7 @@ class GroupService
                 'display_name' => $member->user->display_name,
                 'role' => $member->role,
                 'joined_at' => $member->joined_at?->toIso8601String(),
+                'avatar' => $this->avatars->userAvatarPayload($member->user),
             ])->values()->all(),
             'created_at' => $group->created_at?->toIso8601String(),
             'unread_count' => $unreadCount,
@@ -442,8 +447,8 @@ class GroupService
                     ->orWhere('recipient_user_id', $user->id);
             })
             ->with([
-                'requester:id,uuid,display_name',
-                'recipient:id,uuid,display_name',
+                'requester:'.self::USER_AVATAR_COLUMNS,
+                'recipient:'.self::USER_AVATAR_COLUMNS,
             ])
             ->get();
 
@@ -475,6 +480,7 @@ class GroupService
                 'direct_group_uuid' => $directGroup?->uuid,
                 'is_connected_family' => true,
                 'kinship_label' => $kinshipByUserId[$other->id] ?? 'Family',
+                'avatar' => $this->avatars->userAvatarPayload($other),
             ];
         }
 
@@ -503,7 +509,7 @@ class GroupService
         return $other['display_name'] ?? $group->name;
     }
 
-    /** @return array{user_uuid: string, display_name: string}|null */
+    /** @return array{user_uuid: string, display_name: string, avatar: array<string, mixed>}|null */
     private function resolveOtherMember(Group $group, ?User $viewer): ?array
     {
         if (! $group->isDirect() || ! $viewer) {
@@ -520,6 +526,7 @@ class GroupService
         return [
             'user_uuid' => $otherMember->user->uuid,
             'display_name' => $otherMember->user->display_name,
+            'avatar' => $this->avatars->userAvatarPayload($otherMember->user),
         ];
     }
 

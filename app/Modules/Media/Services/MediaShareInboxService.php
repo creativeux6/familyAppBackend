@@ -4,9 +4,16 @@ namespace App\Modules\Media\Services;
 
 use App\Models\MediaPermission;
 use App\Models\User;
+use App\Modules\Avatars\Services\AvatarService;
 
 class MediaShareInboxService
 {
+    private const USER_AVATAR_COLUMNS = 'id,uuid,display_name,avatar_thumb_key,avatar_master_key,avatar_updated_at';
+
+    public function __construct(
+        private readonly AvatarService $avatars,
+    ) {}
+
     /** Unseen direct shares (excludes chat-sourced attachments). */
     public function unreadCountForUser(User $user): int
     {
@@ -60,7 +67,7 @@ class MediaShareInboxService
         $incoming = MediaPermission::query()
             ->with([
                 'mediaFile.event:uuid,title',
-                'grantedBy:id,uuid,display_name',
+                'grantedBy:'.self::USER_AVATAR_COLUMNS,
                 'group:uuid,name,type',
             ])
             ->where('user_id', $user->id)
@@ -74,7 +81,7 @@ class MediaShareInboxService
         $outgoing = MediaPermission::query()
             ->with([
                 'mediaFile.event:uuid,title',
-                'user:id,uuid,display_name',
+                'user:'.self::USER_AVATAR_COLUMNS,
                 'group:uuid,name,type',
             ])
             ->where('granted_by_user_id', $user->id)
@@ -154,8 +161,12 @@ class MediaShareInboxService
         if ($direction === 'incoming') {
             $actorName = $permission->grantedBy?->display_name ?: 'Someone';
             $actorUuid = $permission->grantedBy?->uuid;
+            $actorAvatar = $permission->grantedBy
+                ? $this->avatars->userAvatarPayload($permission->grantedBy)
+                : null;
             $counterpartName = $actorName;
             $counterpartUuid = $actorUuid;
+            $counterpartAvatar = $actorAvatar;
             $summary = $this->incomingSummary(
                 actorName: $actorName,
                 kind: $kind,
@@ -168,8 +179,12 @@ class MediaShareInboxService
                 ?: ($groupName ?: 'family');
             $counterpartName = $targetName;
             $counterpartUuid = $permission->user?->uuid;
+            $counterpartAvatar = $permission->user
+                ? $this->avatars->userAvatarPayload($permission->user)
+                : null;
             $actorName = 'You';
             $actorUuid = $viewer->uuid;
+            $actorAvatar = $this->avatars->userAvatarPayload($viewer);
             $summary = $this->outgoingSummary(
                 targetName: $targetName,
                 kind: $kind,
@@ -194,8 +209,10 @@ class MediaShareInboxService
             'event_title' => $eventTitle,
             'actor_name' => $actorName,
             'actor_uuid' => $actorUuid,
+            'actor_avatar' => $actorAvatar,
             'counterpart_name' => $counterpartName,
             'counterpart_uuid' => $counterpartUuid,
+            'counterpart_avatar' => $counterpartAvatar,
             'created_at' => optional($permission->created_at)?->toIso8601String(),
         ];
     }
