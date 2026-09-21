@@ -41,36 +41,35 @@ class FamilyTreeService
         $this->assertSameFamily($viewerMember, $rootUuid);
 
         $graph = $this->graphRepository->loadFamilyGraph($viewerMember->family_uuid);
-        $subtree = $this->graphRepository->buildSubtree(
-            $rootUuid,
-            $viewMode,
-            $maxDepth,
-            $graph['members'],
-            $graph['edges'],
-        );
 
+        // View modes are filtered client-side over the cached graph. Bootstrap /
+        // full payloads always use the full edge set (All) so mobile can switch
+        // All / Blood / In-laws without another API call.
         if ($scope !== 'full') {
-            $seedUuids = $this->defaultVisibleSeedUuids(
-                $viewerMember->uuid,
+            $subtree = $this->subtreeFromSeedUuids(
+                $this->defaultVisibleSeedUuids(
+                    $viewerMember,
+                    $graph['members'],
+                    $graph['edges'],
+                ),
+                $graph['members'],
                 $graph['edges'],
             );
-            $subtree['members'] = array_values(array_filter(
-                $subtree['members'],
-                fn (array $node) => in_array($node['uuid'], $seedUuids, true),
-            ));
-            $visibleSeed = array_column($subtree['members'], 'uuid');
-            $subtree['edges'] = array_values(array_filter(
-                $subtree['edges'],
-                fn (array $edge) => in_array($edge['from_member_uuid'], $visibleSeed, true)
-                    && in_array($edge['to_member_uuid'], $visibleSeed, true),
-            ));
+        } else {
+            $subtree = $this->graphRepository->buildSubtree(
+                $rootUuid,
+                TreeViewMode::All,
+                $maxDepth,
+                $graph['members'],
+                $graph['edges'],
+            );
         }
 
         return $this->formatTreePayload(
             $user,
             $viewerMember,
             $rootUuid,
-            $viewMode,
+            TreeViewMode::All,
             $graph,
             $subtree,
         );
@@ -132,13 +131,63 @@ class FamilyTreeService
             $user,
             $viewerMember,
             $viewerMember->uuid,
-            $viewMode,
+            TreeViewMode::All,
             $graph,
             $subtree,
         );
         $payload['expanded_member_uuid'] = $memberUuid;
 
         return $payload;
+    }
+
+    /**
+     * @param  list<string>  $seedUuids
+     * @param  Collection<int, FamilyMember>  $members
+     * @param  Collection<int, mixed>  $edges
+     * @return array{members: list<array<string, mixed>>, edges: list<array<string, mixed>>}
+     */
+    private function subtreeFromSeedUuids(array $seedUuids, Collection $members, Collection $edges): array
+    {
+        $seedSet = array_flip($seedUuids);
+        $membersByUuid = $members->keyBy('uuid');
+        $memberResults = [];
+        foreach ($seedUuids as $uuid) {
+            /** @var FamilyMember|null $member */
+            $member = $membersByUuid->get($uuid);
+            if (! $member) {
+                continue;
+            }
+            $memberResults[] = [
+                'uuid' => $member->uuid,
+                'first_name' => $member->first_name,
+                'last_name' => $member->last_name,
+                'gender' => $member->gender,
+                'is_living' => $member->is_living,
+                'date_of_death' => $member->date_of_death?->format('Y-m-d'),
+                'is_registered' => $member->user_id !== null,
+                'user_uuid' => $member->user?->uuid,
+                'avatar' => app(\App\Modules\Avatars\Services\AvatarService::class)
+                    ->memberAvatarPayload($member),
+                'depth' => 0,
+            ];
+        }
+
+        $edgeResults = $edges
+            ->filter(fn ($edge) => isset($seedSet[$edge->from_member_uuid])
+                && isset($seedSet[$edge->to_member_uuid]))
+            ->map(fn ($edge) => [
+                'uuid' => $edge->uuid,
+                'from_member_uuid' => $edge->from_member_uuid,
+                'to_member_uuid' => $edge->to_member_uuid,
+                'edge_type' => $edge->edgeType->code,
+            ])
+            ->values()
+            ->all();
+
+        return [
+            'members' => $memberResults,
+            'edges' => $edgeResults,
+        ];
     }
 
     /**
@@ -216,46 +265,118 @@ class FamilyTreeService
     }
 
     /**
-     * Default canvas seed: viewer, ancestors, viewer siblings, parents' siblings.
+     * Father-side-first bootstrap seed (members only — no collapsed branches).
      *
+     * Viewer + father + mother + father's siblings + paternal grandparents +
+     * viewer siblings + spouse(s). Children only when viewer is female.
+     *
+     * @param  Collection<int, FamilyMember>  $members
+     * @param  Collection<int, mixed>  $edges
      * @return list<string>
      */
-    private function defaultVisibleSeedUuids(string $viewerUuid, Collection $edges): array
-    {
+    private function defaultVisibleSeedUuids(
+        FamilyMember $viewerMember,
+        Collection $members,
+        Collection $edges,
+    ): array {
+        $viewerUuid = $viewerMember->uuid;
         $parentsOf = [];
         $childrenOf = [];
+        $spousesOf = [];
         foreach ($edges as $edge) {
             $code = $edge->edgeType->code;
             if (in_array($code, ['parent_of', 'adoptive_parent_of', 'step_parent_of'], true)) {
                 $parentsOf[$edge->to_member_uuid][] = $edge->from_member_uuid;
                 $childrenOf[$edge->from_member_uuid][] = $edge->to_member_uuid;
+            } elseif ($code === 'spouse_of') {
+                $spousesOf[$edge->from_member_uuid][] = $edge->to_member_uuid;
+                $spousesOf[$edge->to_member_uuid][] = $edge->from_member_uuid;
             }
         }
 
+        $membersByUuid = $members->keyBy('uuid');
+        [$fatherUuid, $motherUuid] = $this->classifyParents(
+            $parentsOf[$viewerUuid] ?? [],
+            $membersByUuid,
+        );
+
         $visible = [$viewerUuid => true];
-        $queue = [$viewerUuid];
-        while ($queue !== []) {
-            $current = array_shift($queue);
-            foreach ($parentsOf[$current] ?? [] as $parent) {
-                if (! isset($visible[$parent])) {
-                    $visible[$parent] = true;
-                    $queue[] = $parent;
+        if ($fatherUuid) {
+            $visible[$fatherUuid] = true;
+        }
+        if ($motherUuid) {
+            $visible[$motherUuid] = true;
+        }
+
+        // Paternal grandparents + father's siblings only.
+        if ($fatherUuid) {
+            foreach ($parentsOf[$fatherUuid] ?? [] as $paternalGrandparent) {
+                $visible[$paternalGrandparent] = true;
+                foreach ($childrenOf[$paternalGrandparent] ?? [] as $fatherSibling) {
+                    $visible[$fatherSibling] = true;
+                }
+            }
+            // Father's siblings via shared mother/father when GPs missing one side.
+            foreach ($parentsOf[$fatherUuid] ?? [] as $gp) {
+                foreach ($childrenOf[$gp] ?? [] as $sib) {
+                    $visible[$sib] = true;
                 }
             }
         }
 
+        // Viewer's own siblings (shared parents).
         foreach ($parentsOf[$viewerUuid] ?? [] as $parent) {
             foreach ($childrenOf[$parent] ?? [] as $sibling) {
                 $visible[$sibling] = true;
             }
-            foreach ($parentsOf[$parent] ?? [] as $grandparent) {
-                foreach ($childrenOf[$grandparent] ?? [] as $uncle) {
-                    $visible[$uncle] = true;
-                }
+        }
+
+        // Spouse(s) — present but collapsed (expand_count > 0).
+        foreach ($spousesOf[$viewerUuid] ?? [] as $spouseUuid) {
+            $visible[$spouseUuid] = true;
+        }
+
+        // Children only when viewer is female.
+        if (strtolower((string) $viewerMember->gender) === 'female') {
+            foreach ($childrenOf[$viewerUuid] ?? [] as $childUuid) {
+                $visible[$childUuid] = true;
             }
         }
 
         return array_keys($visible);
+    }
+
+    /**
+     * @param  list<string>  $parentUuids
+     * @param  Collection<string, FamilyMember>  $membersByUuid
+     * @return array{0: ?string, 1: ?string} [father, mother]
+     */
+    private function classifyParents(array $parentUuids, Collection $membersByUuid): array
+    {
+        $father = null;
+        $mother = null;
+        $unclassified = [];
+
+        foreach ($parentUuids as $uuid) {
+            $gender = strtolower((string) ($membersByUuid->get($uuid)?->gender ?? 'unknown'));
+            if ($gender === 'male' && $father === null) {
+                $father = $uuid;
+            } elseif ($gender === 'female' && $mother === null) {
+                $mother = $uuid;
+            } else {
+                $unclassified[] = $uuid;
+            }
+        }
+
+        foreach ($unclassified as $uuid) {
+            if ($father === null) {
+                $father = $uuid;
+            } elseif ($mother === null) {
+                $mother = $uuid;
+            }
+        }
+
+        return [$father, $mother];
     }
 
     /**
@@ -611,8 +732,6 @@ class FamilyTreeService
     /** @param  array<string, mixed>  $node */
     private function applyPrivacyToNode(array $node, bool $fullAccess): array
     {
-        $hasAppAccount = (bool) ($node['is_registered'] ?? false);
-
         if ($fullAccess) {
             $node['is_ghost'] = false;
 
@@ -621,7 +740,7 @@ class FamilyTreeService
 
         return [
             ...$node,
-            'is_registered' => $hasAppAccount,
+            'is_registered' => false,
             'is_ghost' => false,
             'user_uuid' => null,
             'date_of_birth' => null,

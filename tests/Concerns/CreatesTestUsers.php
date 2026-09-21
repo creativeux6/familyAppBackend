@@ -83,13 +83,14 @@ trait CreatesTestUsers
             'gender' => 'female',
         ]);
 
-        $parentType = RelationshipEdgeType::query()->where('code', 'parent_of')->firstOrFail();
+        $spouseType = RelationshipEdgeType::query()->where('code', 'spouse_of')->firstOrFail();
 
+        // Spouse so both members appear in father-side-first bootstrap seed.
         RelationshipEdge::query()->create([
             'uuid' => (string) Str::uuid(),
             'from_member_uuid' => $viewerMember->uuid,
             'to_member_uuid' => $otherMember->uuid,
-            'edge_type_id' => $parentType->id,
+            'edge_type_id' => $spouseType->id,
         ]);
 
         return [
