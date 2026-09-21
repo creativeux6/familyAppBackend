@@ -553,6 +553,10 @@ class FamilyTreeService
                     $relationType,
                     $member->uuid,
                 ),
+                'spouse_father', 'spouse_mother' => $this->spouseInLawRelationIndex(
+                    $selfMember,
+                    is_string($data['spouse_uuid'] ?? null) ? $data['spouse_uuid'] : null,
+                ),
                 default => 0,
             };
 
@@ -831,5 +835,17 @@ class FamilyTreeService
             'avatar' => app(\App\Modules\Avatars\Services\AvatarService::class)
                 ->memberAvatarPayload($member),
         ];
+    }
+
+    private function spouseInLawRelationIndex(FamilyMember $selfMember, ?string $spouseUuid): int
+    {
+        $spouseUuids = $this->memberGraph->spouseUuidsFor($selfMember->uuid);
+        if ($spouseUuid === null || $spouseUuid === '') {
+            return 0;
+        }
+
+        $index = array_search($spouseUuid, $spouseUuids, true);
+
+        return $index === false ? 0 : $index;
     }
 }

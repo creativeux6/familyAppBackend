@@ -47,6 +47,7 @@ class AddFamilyMemberRequest extends FormRequest
             'is_living' => ['sometimes', 'boolean'],
             'marriage_date' => ['nullable', 'date'],
             'member_uuid' => ['nullable', 'uuid'],
+            'spouse_uuid' => ['nullable', 'uuid'],
             'confirm_create_new' => ['sometimes', 'boolean'],
         ];
     }

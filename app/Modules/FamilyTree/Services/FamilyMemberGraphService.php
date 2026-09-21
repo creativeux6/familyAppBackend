@@ -242,19 +242,54 @@ class FamilyMemberGraphService
         int $userId,
     ): FamilyMember {
         $activeSelf = $this->activeSelfForUser($userId, $selfMember);
-        $spouse = $this->findSpouseMember($activeSelf);
-        if (! $spouse) {
+        $spouses = $this->findSpouseMembers($activeSelf);
+        if ($spouses->isEmpty()) {
             throw new \InvalidArgumentException('Add a spouse before adding in-laws.');
         }
 
-        $defaultGender = $slot === 'spouse_father' ? 'male' : 'female';
-        $inLaw = $this->upsertMatchingRelative($selfMember, $slot, $data, $defaultGender, userId: $userId);
-        $spouse = $this->findSpouseMember($this->activeSelfForUser($userId, $selfMember));
-        if ($spouse) {
-            $this->ensureParentEdge($inLaw, $spouse, $userId);
-        }
+        $spouse = $this->resolveTargetSpouse($spouses, $data);
+        $parentSlot = $slot === 'spouse_father' ? 'father' : 'mother';
+        $defaultGender = $parentSlot === 'father' ? 'male' : 'female';
+
+        // Match against the chosen spouse's own parents so multiple partners
+        // each keep a distinct father/mother slot.
+        $inLaw = $this->upsertMatchingRelative(
+            $spouse,
+            $parentSlot,
+            $data,
+            $defaultGender,
+            userId: $userId,
+        );
+        $this->ensureParentEdge($inLaw, $spouse, $userId);
 
         return $inLaw;
+    }
+
+    /**
+     * @param  Collection<int, FamilyMember>  $spouses
+     * @param  array<string, mixed>  $data
+     */
+    private function resolveTargetSpouse(Collection $spouses, array $data): FamilyMember
+    {
+        $spouseUuid = $data['spouse_uuid'] ?? null;
+        if (is_string($spouseUuid) && $spouseUuid !== '') {
+            $match = $spouses->firstWhere('uuid', $spouseUuid);
+            if (! $match) {
+                throw ValidationException::withMessages([
+                    'spouse_uuid' => ['Selected person is not one of your spouses.'],
+                ]);
+            }
+
+            return $match;
+        }
+
+        if ($spouses->count() > 1) {
+            throw ValidationException::withMessages([
+                'spouse_uuid' => ['Choose which spouse this in-law belongs to.'],
+            ]);
+        }
+
+        return $spouses->first();
     }
 
     private function activeSelfForUser(int $userId, FamilyMember $fallback): FamilyMember
