@@ -13,7 +13,7 @@ import { LogsPage } from './pages/LogsPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { UsersPage } from './pages/UsersPage';
 import { StoragePlansPage } from './pages/StoragePlansPage';
-
+import { SettingsPage } from './pages/SettingsPage';
 function GuestOnly({ children }) {
   const { user, booting } = useAuth();
 
@@ -127,6 +127,7 @@ function AppRoutes() {
         <Route path="logs" element={<LogsPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="plans" element={<StoragePlansPage />} />
+        <Route path="settings" element={<SettingsPage />} />
         <Route path="profile" element={<ProfilePage />} />
       </Route>
       <Route path="*" element={<Navigate to="/web" replace />} />

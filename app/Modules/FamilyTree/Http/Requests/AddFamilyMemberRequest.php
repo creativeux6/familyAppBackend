@@ -26,7 +26,11 @@ class AddFamilyMemberRequest extends FormRequest
             'relation_type' => [
                 'required',
                 'string',
-                Rule::in(['father', 'mother', 'spouse', 'child', 'sibling', 'spouse_father', 'spouse_mother']),
+                Rule::in([
+                    'father', 'mother', 'spouse', 'child', 'sibling', 'spouse_father', 'spouse_mother',
+                    'paternal_grandfather', 'paternal_grandmother', 'maternal_grandfather', 'maternal_grandmother',
+                    'paternal_uncle', 'paternal_aunt', 'maternal_uncle', 'maternal_aunt',
+                ]),
             ],
             'uuid' => ['nullable', 'uuid'],
             'first_name' => [

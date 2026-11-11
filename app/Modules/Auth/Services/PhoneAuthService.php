@@ -2,14 +2,19 @@
 
 namespace App\Modules\Auth\Services;
 
+use App\Mail\LoginAlertMail;
+use App\Mail\PasswordResetOtpMail;
+use App\Mail\SupportRecoveryRequestMail;
+use App\Models\AppSetting;
 use App\Models\User;
 use App\Modules\StoragePlans\Services\PlanAssignmentService;
+use App\Support\AdminDiagnostic;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
-use App\Support\AdminDiagnostic;
 use Illuminate\Validation\ValidationException;
 use Laravel\Sanctum\PersonalAccessToken;
 use Spatie\Permission\Models\Role;
@@ -62,8 +67,12 @@ class PhoneAuthService
         });
     }
 
-    public function login(string $phone, string $password, string $tokenName = 'mobile'): array
-    {
+    public function login(
+        string $phone,
+        string $password,
+        string $tokenName = 'mobile',
+        ?string $deviceName = null,
+    ): array {
         $phone = $this->normalizePhone($phone);
         $failureKey = 'login-fail:'.hash('sha256', $phone);
 
@@ -108,6 +117,8 @@ class PhoneAuthService
 
         $this->planAssignmentService->ensureDefaultFreePlan($user);
 
+        $this->sendLoginAlert($user, $deviceName);
+
         return $this->authResponse($user->fresh(), $token, 'logged_in');
     }
 
@@ -148,48 +159,132 @@ class PhoneAuthService
         return $this->userPayload($user->fresh());
     }
 
-    /** @return array{message: string, reset_token?: string} */
+    /**
+     * Issue an email OTP for password reset when the account has an email.
+     *
+     * @return array<string, mixed>
+     */
     public function forgotPassword(string $phone): array
     {
         $phone = $this->normalizePhone($phone);
         $user = User::query()->where('phone', $phone)->first();
 
-        // Always return a generic message to avoid account enumeration.
-        $message = 'If that phone number is registered, a reset token has been issued.';
-
         if (! $user) {
-            return ['message' => $message];
+            // Avoid confirming whether the phone exists.
+            return [
+                'status' => 'otp_sent',
+                'message' => 'If that account has an email on file, a reset code was sent.',
+                'resend_after_seconds' => 180,
+            ];
         }
 
-        $token = Str::upper(Str::random(8));
+        if (! is_string($user->email) || trim($user->email) === '') {
+            return [
+                'status' => 'no_email',
+                'message' => 'No email attached to your account so we cannot initiate the recovery process.',
+                'can_contact_support' => true,
+            ];
+        }
+
+        $resendKey = 'reset-otp-resend:'.hash('sha256', $phone);
+        if (RateLimiter::tooManyAttempts($resendKey, 1)) {
+            $seconds = RateLimiter::availableIn($resendKey);
+
+            return [
+                'status' => 'otp_sent',
+                'message' => 'A reset code was already sent. You can request another after the timer.',
+                'resend_after_seconds' => max(1, $seconds),
+            ];
+        }
+
+        $otp = (string) random_int(100000, 999999);
 
         DB::table('password_reset_tokens')->updateOrInsert(
             ['email' => $phone],
             [
-                'token' => Hash::make($token),
+                'token' => Hash::make($otp),
                 'created_at' => now(),
             ]
         );
 
-        // Never log plaintext reset tokens outside local/testing.
+        RateLimiter::hit($resendKey, 180);
+
+        Mail::to($user->email)->send(new PasswordResetOtpMail($otp, $phone));
+
         if (app()->environment(['local', 'testing'])) {
-            Log::info('Password reset token issued', [
+            Log::info('Password reset OTP issued', [
                 'phone' => $phone,
-                'reset_token' => $token,
+                'otp' => $otp,
             ]);
         } else {
-            Log::info('Password reset token issued', [
+            Log::info('Password reset OTP issued', [
                 'phone_hash' => hash('sha256', $phone),
             ]);
         }
 
-        $payload = ['message' => $message];
+        $payload = [
+            'status' => 'otp_sent',
+            'message' => 'A reset code was sent to the email on your account.',
+            'resend_after_seconds' => 180,
+        ];
 
         if (app()->environment(['local', 'testing'])) {
-            $payload['reset_token'] = $token;
+            $payload['otp'] = $otp;
         }
 
         return $payload;
+    }
+
+    /**
+     * Verify OTP and return a short-lived reset capability token.
+     *
+     * @return array{status: string, reset_token: string, message: string}
+     */
+    public function verifyResetOtp(string $phone, string $otp): array
+    {
+        $phone = $this->normalizePhone($phone);
+        $attemptKey = 'reset-otp-attempt:'.hash('sha256', $phone);
+
+        if (RateLimiter::tooManyAttempts($attemptKey, 8)) {
+            $seconds = RateLimiter::availableIn($attemptKey);
+
+            throw ValidationException::withMessages([
+                'otp' => ["Too many attempts. Try again in {$seconds} seconds."],
+            ]);
+        }
+
+        $row = DB::table('password_reset_tokens')->where('email', $phone)->first();
+        $invalidMessage = 'This reset code is invalid or has expired.';
+
+        if (
+            ! $row
+            || ! Hash::check($otp, $row->token)
+            || ($row->created_at && \Illuminate\Support\Carbon::parse($row->created_at)->lt(now()->subMinutes(10)))
+        ) {
+            RateLimiter::hit($attemptKey, 60 * 15);
+
+            throw ValidationException::withMessages([
+                'otp' => [$invalidMessage],
+            ]);
+        }
+
+        RateLimiter::clear($attemptKey);
+
+        $resetToken = Str::random(64);
+
+        DB::table('password_reset_tokens')->updateOrInsert(
+            ['email' => $phone],
+            [
+                'token' => Hash::make($resetToken),
+                'created_at' => now(),
+            ]
+        );
+
+        return [
+            'status' => 'otp_verified',
+            'reset_token' => $resetToken,
+            'message' => 'Code verified. Set a new password.',
+        ];
     }
 
     public function resetPassword(string $phone, string $token, string $password): array
@@ -212,7 +307,7 @@ class PhoneAuthService
             ]);
         }
 
-        if ($row->created_at && \Illuminate\Support\Carbon::parse($row->created_at)->lt(now()->subHour())) {
+        if ($row->created_at && \Illuminate\Support\Carbon::parse($row->created_at)->lt(now()->subMinutes(30))) {
             throw ValidationException::withMessages([
                 'token' => [$invalidMessage],
             ]);
@@ -225,7 +320,49 @@ class PhoneAuthService
         DB::table('password_reset_tokens')->where('email', $phone)->delete();
         $user->tokens()->delete();
 
-        return ['message' => 'Password has been reset. You can log in with your new password.'];
+        return ['message' => 'Password changed successfully. You can log in with your new password.'];
+    }
+
+    /** @return array{message: string} */
+    public function contactSupportForRecovery(string $phone, ?string $note = null): array
+    {
+        $phone = $this->normalizePhone($phone);
+        $support = AppSetting::getValue(
+            'support_inbox_email',
+            (string) config('mail.from.address'),
+        );
+
+        if (! is_string($support) || trim($support) === '') {
+            throw ValidationException::withMessages([
+                'support' => ['Support inbox is not configured. Please try again later.'],
+            ]);
+        }
+
+        Mail::to($support)->send(new SupportRecoveryRequestMail($phone, $note));
+
+        return [
+            'message' => 'Support has been notified. Once an email is added to your account, retry forgot password.',
+        ];
+    }
+
+    private function sendLoginAlert(User $user, ?string $deviceName): void
+    {
+        if (! is_string($user->email) || trim($user->email) === '') {
+            return;
+        }
+
+        $label = is_string($deviceName) && trim($deviceName) !== ''
+            ? trim($deviceName)
+            : 'Unknown device';
+
+        try {
+            Mail::to($user->email)->send(new LoginAlertMail((string) $user->phone, $label));
+        } catch (\Throwable $e) {
+            Log::warning('Login alert email failed', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     public function changePassword(User $user, string $currentPassword, string $newPassword): array
@@ -294,6 +431,7 @@ class PhoneAuthService
         return [
             'uuid' => $user->uuid,
             'phone' => $user->phone,
+            'email' => $user->email,
             'display_name' => $user->display_name,
             'is_anonymous' => $user->is_anonymous,
             'roles' => $user->getRoleNames()->values()->all(),

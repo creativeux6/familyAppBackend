@@ -92,11 +92,18 @@ class AdminUserService
     {
         $user = $this->requireUser($uuid);
 
-        $updates = array_intersect_key($data, array_flip(['display_name', 'is_anonymous']));
+        $updates = array_intersect_key($data, array_flip(['display_name', 'email', 'is_anonymous']));
 
         if ($updates !== []) {
             if (isset($updates['display_name'])) {
                 $updates['name'] = $updates['display_name'];
+            }
+
+            if (array_key_exists('email', $updates)) {
+                $email = $updates['email'];
+                $updates['email'] = is_string($email) && trim($email) !== ''
+                    ? strtolower(trim($email))
+                    : null;
             }
             $user->update($updates);
         }
@@ -277,6 +284,8 @@ class AdminUserService
         return [
             'uuid' => $user->uuid,
             'display_name' => $user->display_name,
+            'phone' => $user->phone,
+            'email' => $user->email,
             'storage_used_bytes' => $storage['stored_bytes'] ?? 0,
             'storage_read_bytes' => $storage['lifetime_read_bytes'] ?? 0,
             'storage_read_period_bytes' => $storage['access_used_bytes'] ?? 0,

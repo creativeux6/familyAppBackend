@@ -16,6 +16,7 @@ class LoginRequest extends FormRequest
         return [
             'phone' => ['required', 'string', 'max:20', 'regex:/^\+[1-9]\d{6,14}$/'],
             'password' => ['required', 'string'],
+            'device_name' => ['sometimes', 'nullable', 'string', 'max:120'],
         ];
     }
 

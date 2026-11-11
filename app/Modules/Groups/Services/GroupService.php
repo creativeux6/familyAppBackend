@@ -20,7 +20,7 @@ use Illuminate\Validation\ValidationException;
 
 class GroupService
 {
-    private const USER_AVATAR_COLUMNS = 'id,uuid,display_name,avatar_thumb_key,avatar_master_key,avatar_updated_at';
+    private const USER_AVATAR_COLUMNS = 'id,uuid,display_name,phone,avatar_thumb_key,avatar_master_key,avatar_updated_at';
 
     public function __construct(
         private readonly ConnectedMemberGuard $connectedMemberGuard,
@@ -421,6 +421,7 @@ class GroupService
             'members' => $group->members->map(fn (GroupMember $member) => [
                 'user_uuid' => $member->user->uuid,
                 'display_name' => $member->user->display_name,
+                'phone' => $member->user->phone,
                 'role' => $member->role,
                 'joined_at' => $member->joined_at?->toIso8601String(),
                 'avatar' => $this->avatars->userAvatarPayload($member->user),
@@ -429,6 +430,7 @@ class GroupService
             'unread_count' => $unreadCount,
             'last_message' => $lastMessage ? [
                 'uuid' => $lastMessage->uuid,
+                'sender_user_uuid' => $lastMessage->sender->uuid,
                 'sender_display_name' => $lastMessage->sender->display_name,
                 'type' => $lastMessage->type,
                 'is_deleted' => $lastMessage->trashed(),
@@ -526,6 +528,7 @@ class GroupService
         return [
             'user_uuid' => $otherMember->user->uuid,
             'display_name' => $otherMember->user->display_name,
+            'phone' => $otherMember->user->phone,
             'avatar' => $this->avatars->userAvatarPayload($otherMember->user),
         ];
     }

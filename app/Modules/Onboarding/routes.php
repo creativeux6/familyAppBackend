@@ -8,7 +8,6 @@ Route::prefix('onboarding')->middleware('auth:sanctum')->group(function () {
     Route::post('/start-solo', [OnboardingController::class, 'startSolo']);
     Route::post('/lookup-member-code', [OnboardingController::class, 'lookupMemberCode']);
     Route::post('/join-by-member-code', [OnboardingController::class, 'joinByMemberCode']);
-    Route::post('/find-by-relatives', [OnboardingController::class, 'findByRelatives']);
     Route::post('/parent-context', [OnboardingController::class, 'storeParentContext']);
     Route::get('/declared-relatives', [OnboardingController::class, 'declaredRelatives']);
     Route::post('/declared-relatives', [OnboardingController::class, 'syncDeclaredRelatives']);

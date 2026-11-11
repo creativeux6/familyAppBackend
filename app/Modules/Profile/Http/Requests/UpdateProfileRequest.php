@@ -17,6 +17,7 @@ class UpdateProfileRequest extends FormRequest
     {
         return [
             'display_name' => ['sometimes', 'string', 'max:255'],
+            'email' => ['sometimes', 'nullable', 'email', 'max:255', Rule::unique('users', 'email')->ignore($this->user()?->id)],
             'marital_status' => ['sometimes', 'nullable', Rule::in([
                 'single', 'married', 'widowed', 'divorced', 'other',
             ])],

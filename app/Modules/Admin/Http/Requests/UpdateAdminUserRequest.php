@@ -16,6 +16,7 @@ class UpdateAdminUserRequest extends FormRequest
     {
         return [
             'display_name' => ['sometimes', 'string', 'max:255'],
+            'email' => ['sometimes', 'nullable', 'email', 'max:255'],
             'is_anonymous' => ['sometimes', 'boolean'],
         ];
     }

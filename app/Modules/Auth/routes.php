@@ -11,6 +11,10 @@ Route::prefix('auth')->group(function () {
         ->middleware('throttle:auth-login');
     Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])
         ->middleware('throttle:auth-password');
+    Route::post('/verify-reset-otp', [AuthController::class, 'verifyResetOtp'])
+        ->middleware('throttle:auth-password');
+    Route::post('/contact-support', [AuthController::class, 'contactSupport'])
+        ->middleware('throttle:auth-password');
     Route::post('/reset-password', [AuthController::class, 'resetPassword'])
         ->middleware('throttle:auth-password');
 

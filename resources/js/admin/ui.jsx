@@ -244,6 +244,10 @@ function SidebarNav({ isAdmin, onNavigate }) {
             <IconStorage />
             Storage plans
           </NavLink>
+          <NavLink to="/web/settings" className={navClass} onClick={onNavigate}>
+            <IconLogs />
+            Settings
+          </NavLink>
         </>
       ) : (
         <div className="pointer-events-none mt-4 space-y-1 opacity-45">

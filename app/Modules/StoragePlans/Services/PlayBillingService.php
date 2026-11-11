@@ -209,7 +209,12 @@ class PlayBillingService
     {
         if (! $this->play->isConfigured()) {
             throw ValidationException::withMessages([
-                'payment' => ['Google Play Billing is not configured on the server.'],
+                'payment' => [
+                    'Google Play Billing is not configured on the server. '
+                    .'Set GOOGLE_PLAY_CLIENT_EMAIL + GOOGLE_PLAY_PRIVATE_KEY '
+                    .'(or GOOGLE_PLAY_CREDENTIALS_PATH), or enable '
+                    .'GOOGLE_PLAY_STUB_VERIFY=true for local/closed testing.',
+                ],
             ]);
         }
 

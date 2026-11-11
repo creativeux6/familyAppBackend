@@ -75,6 +75,12 @@ class FamilyMemberGraphService
         $primarySpouse = $spouses->first();
         $primaryParents = $primarySpouse ? $this->parentsOf($primarySpouse->uuid, $user) : [];
         $spouseUuids = $spouses->pluck('uuid')->all();
+        $paternalGrandparents = isset($selfParents['father'])
+            ? $this->parentsOf($selfParents['father']->uuid, $user)
+            : [];
+        $maternalGrandparents = isset($selfParents['mother'])
+            ? $this->parentsOf($selfParents['mother']->uuid, $user)
+            : [];
 
         return [
             'father' => isset($selfParents['father'])
@@ -82,6 +88,18 @@ class FamilyMemberGraphService
                 : null,
             'mother' => isset($selfParents['mother'])
                 ? $this->formatRelative($selfParents['mother'])
+                : null,
+            'paternal_grandfather' => isset($paternalGrandparents['father'])
+                ? $this->formatRelative($paternalGrandparents['father'])
+                : null,
+            'paternal_grandmother' => isset($paternalGrandparents['mother'])
+                ? $this->formatRelative($paternalGrandparents['mother'])
+                : null,
+            'maternal_grandfather' => isset($maternalGrandparents['father'])
+                ? $this->formatRelative($maternalGrandparents['father'])
+                : null,
+            'maternal_grandmother' => isset($maternalGrandparents['mother'])
+                ? $this->formatRelative($maternalGrandparents['mother'])
                 : null,
             'has_multiple_partners' => $spouses->count() > 1,
             'spouses' => $spousePayloads,
@@ -170,6 +188,11 @@ class FamilyMemberGraphService
             'child' => $this->addChild($selfMember, $data, $userId),
             'sibling' => $this->addSibling($selfMember, $data, $userId),
             'spouse_father', 'spouse_mother' => $this->addSpouseInLaw($selfMember, $relationType, $data, $userId),
+            'paternal_grandfather', 'paternal_grandmother',
+            'maternal_grandfather', 'maternal_grandmother'
+                => $this->addGrandparent($selfMember, $relationType, $data, $userId),
+            'paternal_uncle', 'paternal_aunt', 'maternal_uncle', 'maternal_aunt'
+                => $this->addParentSibling($selfMember, $relationType, $data, $userId),
             default => throw new \InvalidArgumentException("Unsupported relation type: {$relationType}"),
         };
     }
@@ -263,6 +286,79 @@ class FamilyMemberGraphService
         $this->ensureParentEdge($inLaw, $spouse, $userId);
 
         return $inLaw;
+    }
+
+    /** @param  array<string, mixed>  $data */
+    private function addGrandparent(
+        FamilyMember $selfMember,
+        string $slot,
+        array $data,
+        int $userId,
+    ): FamilyMember {
+        $line = str_starts_with($slot, 'paternal_') ? 'father' : 'mother';
+        $parent = $this->parentsOf($selfMember->uuid)[$line] ?? null;
+        if (! $parent) {
+            throw new \InvalidArgumentException(
+                $line === 'father'
+                    ? 'Add your father before adding paternal grandparents.'
+                    : 'Add your mother before adding maternal grandparents.'
+            );
+        }
+
+        $parentSlot = str_ends_with($slot, 'grandfather') ? 'father' : 'mother';
+        $defaultGender = $parentSlot === 'father' ? 'male' : 'female';
+
+        $grandparent = $this->upsertMatchingRelative(
+            $parent,
+            $parentSlot,
+            $data,
+            $defaultGender,
+            userId: $userId,
+        );
+        $this->ensureParentEdge($grandparent, $parent, $userId);
+
+        return $grandparent;
+    }
+
+    /** @param  array<string, mixed>  $data */
+    private function addParentSibling(
+        FamilyMember $selfMember,
+        string $slot,
+        array $data,
+        int $userId,
+    ): FamilyMember {
+        $line = str_starts_with($slot, 'paternal_') ? 'father' : 'mother';
+        $parent = $this->parentsOf($selfMember->uuid)[$line] ?? null;
+        if (! $parent) {
+            throw new \InvalidArgumentException(
+                $line === 'father'
+                    ? 'Add your father before adding a paternal uncle or aunt.'
+                    : 'Add your mother before adding a maternal uncle or aunt.'
+            );
+        }
+
+        $grandparents = $this->parentsOf($parent->uuid);
+        if ($grandparents === []) {
+            throw new \InvalidArgumentException(
+                $line === 'father'
+                    ? 'Add at least one paternal grandparent before adding a paternal uncle or aunt.'
+                    : 'Add at least one maternal grandparent before adding a maternal uncle or aunt.'
+            );
+        }
+
+        $defaultGender = str_ends_with($slot, 'uncle') ? 'male' : 'female';
+        $payload = $data;
+        if (! isset($payload['gender']) || $payload['gender'] === '' || $payload['gender'] === 'unknown') {
+            $payload['gender'] = $defaultGender;
+        }
+
+        $sibling = $this->upsertSibling($parent, $payload);
+
+        foreach ($grandparents as $grandparent) {
+            $this->ensureParentEdge($grandparent, $sibling, $userId);
+        }
+
+        return $sibling;
     }
 
     /**
@@ -1305,8 +1401,12 @@ class FamilyMemberGraphService
     private function defaultGenderForSlot(string $slot): string
     {
         return match ($slot) {
-            'father', 'spouse_father' => 'male',
-            'mother', 'spouse_mother' => 'female',
+            'father', 'spouse_father',
+            'paternal_grandfather', 'maternal_grandfather',
+            'paternal_uncle', 'maternal_uncle' => 'male',
+            'mother', 'spouse_mother',
+            'paternal_grandmother', 'maternal_grandmother',
+            'paternal_aunt', 'maternal_aunt' => 'female',
             default => 'unknown',
         };
     }

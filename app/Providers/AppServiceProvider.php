@@ -17,6 +17,7 @@ use App\Modules\Media\Events\MediaSharedWithUser;
 use App\Modules\StoragePlans\Contracts\GooglePlayClientInterface;
 use App\Modules\StoragePlans\Services\GooglePlayDeveloperClient;
 use App\Modules\StoragePlans\Services\ManualPlanGateway;
+use App\Modules\StoragePlans\Services\StubGooglePlayClient;
 use App\Repositories\FamilyGraph\MysqlFamilyGraphRepository;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -41,7 +42,19 @@ class AppServiceProvider extends ServiceProvider
         });
 
         $this->app->bind(PaymentGatewayInterface::class, ManualPlanGateway::class);
-        $this->app->bind(GooglePlayClientInterface::class, GooglePlayDeveloperClient::class);
+        $this->app->singleton(GooglePlayDeveloperClient::class);
+        $this->app->bind(GooglePlayClientInterface::class, function ($app) {
+            $real = $app->make(GooglePlayDeveloperClient::class);
+            if ($real->isConfigured()) {
+                return $real;
+            }
+
+            if (filter_var(config('google_play.stub_verify'), FILTER_VALIDATE_BOOLEAN)) {
+                return $app->make(StubGooglePlayClient::class);
+            }
+
+            return $real;
+        });
 
         $this->app->bind(EventManagementServiceInterface::class, NullEventManagementService::class);
     }

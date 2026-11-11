@@ -4,10 +4,12 @@ namespace App\Modules\Auth\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Auth\Http\Requests\ChangePasswordRequest;
+use App\Modules\Auth\Http\Requests\ContactSupportRequest;
 use App\Modules\Auth\Http\Requests\ForgotPasswordRequest;
 use App\Modules\Auth\Http\Requests\LoginRequest;
 use App\Modules\Auth\Http\Requests\RegisterRequest;
 use App\Modules\Auth\Http\Requests\ResetPasswordRequest;
+use App\Modules\Auth\Http\Requests\VerifyResetOtpRequest;
 use App\Modules\Auth\Services\PhoneAuthService;
 use Illuminate\Http\JsonResponse;
 use OpenApi\Attributes as OA;
@@ -108,6 +110,7 @@ class AuthController extends Controller
             $request->validated('phone'),
             $request->validated('password'),
             $tokenName,
+            $request->validated('device_name'),
         );
 
         return response()->json($result);
@@ -117,6 +120,26 @@ class AuthController extends Controller
     {
         return response()->json(
             $this->phoneAuthService->forgotPassword($request->validated('phone'))
+        );
+    }
+
+    public function verifyResetOtp(VerifyResetOtpRequest $request): JsonResponse
+    {
+        return response()->json(
+            $this->phoneAuthService->verifyResetOtp(
+                $request->validated('phone'),
+                $request->validated('otp'),
+            )
+        );
+    }
+
+    public function contactSupport(ContactSupportRequest $request): JsonResponse
+    {
+        return response()->json(
+            $this->phoneAuthService->contactSupportForRecovery(
+                $request->validated('phone'),
+                $request->validated('note'),
+            )
         );
     }
 

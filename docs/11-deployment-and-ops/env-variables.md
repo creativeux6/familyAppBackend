@@ -7,6 +7,7 @@
 | `APP_NAME` | Tijori | Application name |
 | `APP_ENV` | local / production | Environment |
 | `APP_KEY` | base64:... | Laravel encryption key |
+| `ENCRYPTION_VAULT_MASTER_KEY` | base64:... (32 bytes) | Seals identity private keys for account-auth vault unlock; falls back to `APP_KEY` if unset |
 | `APP_URL` | http://localhost:8000 | API base URL |
 | `APP_DEBUG` | true / false | Debug mode |
 
@@ -105,6 +106,7 @@ Requires `php artisan queue:work` for push delivery. See [push-notifications-set
 | `GOOGLE_PLAY_CLIENT_EMAIL` | Play API service account | From Play Console API access |
 | `GOOGLE_PLAY_PRIVATE_KEY` | PEM | Use `\n` for newlines |
 | `GOOGLE_PLAY_CREDENTIALS_PATH` | `/path/to.json` | Optional JSON file instead of env PEM |
+| `GOOGLE_PLAY_STUB_VERIFY` | `false` | When `true` and no credentials, accept purchase tokens without calling Google (local/closed-test only) |
 | `GOOGLE_PLAY_RTDN_TOKEN` | random secret | Query token on `/api/v1/webhooks/google-play` |
 | `GOOGLE_PLAY_SKU_PERSONAL` | `tijori_personal` | Play subscription product id |
 | `GOOGLE_PLAY_SKU_PLUS` | `tijori_plus` | |

@@ -98,4 +98,119 @@ class AddFamilyMemberTest extends TestCase
         ])->assertStatus(422)
             ->assertJsonValidationErrors(['spouse_uuid']);
     }
+
+    public function test_paternal_grandfather_requires_father(): void
+    {
+        $user = $this->createUserWithFamily(['display_name' => 'Ahmed']);
+        FamilyMember::query()->where('user_id', $user->id)->firstOrFail()
+            ->update(['first_name' => 'Ahmed', 'last_name' => 'Ali', 'gender' => 'male']);
+
+        $this->actingAsUser($user);
+
+        $this->postJson('/api/v1/family-tree/members', [
+            'relation_type' => 'paternal_grandfather',
+            'first_name' => 'Hassan',
+            'last_name' => 'Ali',
+            'gender' => 'male',
+        ])->assertStatus(500)
+            ->assertJsonFragment([
+                'message' => 'Add your father before adding paternal grandparents.',
+            ]);
+    }
+
+    public function test_paternal_grandfather_attaches_to_father(): void
+    {
+        $user = $this->createUserWithFamily(['display_name' => 'Ahmed']);
+        FamilyMember::query()->where('user_id', $user->id)->firstOrFail()
+            ->update(['first_name' => 'Ahmed', 'last_name' => 'Ali', 'gender' => 'male']);
+
+        $this->actingAsUser($user);
+
+        $this->postJson('/api/v1/family-tree/members', [
+            'relation_type' => 'father',
+            'first_name' => 'Omar',
+            'last_name' => 'Ali',
+            'gender' => 'male',
+        ])->assertCreated();
+
+        $response = $this->postJson('/api/v1/family-tree/members', [
+            'relation_type' => 'paternal_grandfather',
+            'first_name' => 'Hassan',
+            'last_name' => 'Ali',
+            'gender' => 'male',
+            'is_living' => true,
+        ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('member.first_name', 'Hassan');
+
+        $this->getJson('/api/v1/family-tree/family-info')
+            ->assertOk()
+            ->assertJsonPath('family_info.father.first_name', 'Omar')
+            ->assertJsonPath('family_info.paternal_grandfather.first_name', 'Hassan');
+    }
+
+    public function test_paternal_uncle_requires_father(): void
+    {
+        $user = $this->createUserWithFamily(['display_name' => 'Ahmed']);
+        FamilyMember::query()->where('user_id', $user->id)->firstOrFail()
+            ->update(['first_name' => 'Ahmed', 'last_name' => 'Ali', 'gender' => 'male']);
+
+        $this->actingAsUser($user);
+
+        $this->postJson('/api/v1/family-tree/members', [
+            'relation_type' => 'paternal_uncle',
+            'first_name' => 'Karim',
+            'last_name' => 'Ali',
+            'gender' => 'male',
+        ])->assertStatus(500)
+            ->assertJsonFragment([
+                'message' => 'Add your father before adding a paternal uncle or aunt.',
+            ]);
+    }
+
+    public function test_paternal_uncle_shares_fathers_parents(): void
+    {
+        $user = $this->createUserWithFamily(['display_name' => 'Ahmed']);
+        FamilyMember::query()->where('user_id', $user->id)->firstOrFail()
+            ->update(['first_name' => 'Ahmed', 'last_name' => 'Ali', 'gender' => 'male']);
+
+        $this->actingAsUser($user);
+
+        $this->postJson('/api/v1/family-tree/members', [
+            'relation_type' => 'father',
+            'first_name' => 'Omar',
+            'last_name' => 'Ali',
+            'gender' => 'male',
+        ])->assertCreated();
+
+        $this->postJson('/api/v1/family-tree/members', [
+            'relation_type' => 'paternal_grandfather',
+            'first_name' => 'Hassan',
+            'last_name' => 'Ali',
+            'gender' => 'male',
+        ])->assertCreated();
+
+        $uncle = $this->postJson('/api/v1/family-tree/members', [
+            'relation_type' => 'paternal_uncle',
+            'first_name' => 'Karim',
+            'last_name' => 'Ali',
+            'gender' => 'male',
+            'is_living' => true,
+        ]);
+
+        $uncle->assertCreated()
+            ->assertJsonPath('member.first_name', 'Karim');
+
+        $grandfatherUuid = $this->getJson('/api/v1/family-tree/family-info')
+            ->assertOk()
+            ->json('family_info.paternal_grandfather.uuid');
+
+        $uncleUuid = $uncle->json('member.uuid');
+
+        $this->assertDatabaseHas('relationship_edges', [
+            'from_member_uuid' => $grandfatherUuid,
+            'to_member_uuid' => $uncleUuid,
+        ]);
+    }
 }

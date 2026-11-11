@@ -28,11 +28,18 @@ class ProfileService
     /** @param  array<string, mixed>  $data */
     public function updateUser(User $user, array $data): array
     {
-        $updates = array_intersect_key($data, array_flip(['display_name', 'marital_status']));
+        $updates = array_intersect_key($data, array_flip(['display_name', 'email', 'marital_status']));
 
         if ($updates !== []) {
             if (isset($updates['display_name'])) {
                 $updates['name'] = $updates['display_name'];
+            }
+
+            if (array_key_exists('email', $updates)) {
+                $email = $updates['email'];
+                $updates['email'] = is_string($email) && trim($email) !== ''
+                    ? strtolower(trim($email))
+                    : null;
             }
 
             $user->update($updates);
@@ -88,6 +95,7 @@ class ProfileService
             'uuid' => $user->uuid,
             'display_name' => $user->display_name,
             'phone' => $user->phone,
+            'email' => $user->email,
             'is_anonymous' => (bool) $user->is_anonymous,
             'marital_status' => $user->marital_status,
             'avatar' => $this->avatars->userAvatarPayload($user),

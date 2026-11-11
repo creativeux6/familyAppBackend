@@ -16,6 +16,8 @@ class FamilyTreeService
 {
     private const ADDABLE_RELATIONS = [
         'father', 'mother', 'spouse', 'child', 'sibling', 'spouse_father', 'spouse_mother',
+        'paternal_grandfather', 'paternal_grandmother', 'maternal_grandfather', 'maternal_grandmother',
+        'paternal_uncle', 'paternal_aunt', 'maternal_uncle', 'maternal_aunt',
     ];
 
     public function __construct(
@@ -548,11 +550,13 @@ class FamilyTreeService
             }
 
             $relationIndex = match ($relationType) {
-                'child', 'sibling' => $this->declaredRelatives->nextRelationIndex(
-                    $user,
-                    $relationType,
-                    $member->uuid,
-                ),
+                'child', 'sibling',
+                'paternal_uncle', 'paternal_aunt', 'maternal_uncle', 'maternal_aunt'
+                    => $this->declaredRelatives->nextRelationIndex(
+                        $user,
+                        $relationType,
+                        $member->uuid,
+                    ),
                 'spouse_father', 'spouse_mother' => $this->spouseInLawRelationIndex(
                     $selfMember,
                     is_string($data['spouse_uuid'] ?? null) ? $data['spouse_uuid'] : null,

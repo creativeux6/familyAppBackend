@@ -13,9 +13,9 @@ Production API: `https://app.prolampx.com/api/v1`. Privacy: `https://app.prolamp
    - `tijori_plus` — $4.99 / month
    - `tijori_pro` — $9.99 / month
 4. Add **license testers** (your Gmail + reviewer Gmail).
-5. Create a Google Cloud **service account** with Financial / Android Publisher access, link it in Play Console → API access, put `GOOGLE_PLAY_CLIENT_EMAIL` + `GOOGLE_PLAY_PRIVATE_KEY` (or `GOOGLE_PLAY_CREDENTIALS_PATH`) on the server.
+5. Create a Google Cloud **service account** with Financial / Android Publisher access, link it in Play Console → API access, put `GOOGLE_PLAY_CLIENT_EMAIL` + `GOOGLE_PLAY_PRIVATE_KEY` (or `GOOGLE_PLAY_CREDENTIALS_PATH`) on the server. Until that is set, local/closed testing can use `GOOGLE_PLAY_STUB_VERIFY=true` so `/storage/play/verify` accepts purchase tokens without calling Google — **turn stub off** once real credentials are live.
 6. Real-time developer notifications: Pub/Sub push to `https://app.prolampx.com/api/v1/webhooks/google-play?token=YOUR_GOOGLE_PLAY_RTDN_TOKEN`.
-7. Production `.env`: `PAYMENTS_STUB_SUCCEED=false`, `PAYMENTS_ALLOW_CLIENT_PAID_CHANGE=false`.
+7. Production `.env`: `PAYMENTS_STUB_SUCCEED=false`, `PAYMENTS_ALLOW_CLIENT_PAID_CHANGE=false`, and prefer real Play credentials over `GOOGLE_PLAY_STUB_VERIFY`.
 8. Build: `./build_play.sh` (auto-bumps version code).
 9. New personal developer accounts usually need **closed testing** (commonly 12 testers / 14 days) before production.
 

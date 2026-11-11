@@ -4,7 +4,6 @@ namespace App\Modules\Onboarding\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Onboarding\Http\Requests\ConfirmFamilyRequest;
-use App\Modules\Onboarding\Http\Requests\FindFamilyByRelativesRequest;
 use App\Modules\Onboarding\Http\Requests\JoinByMemberCodeRequest;
 use App\Modules\Onboarding\Http\Requests\LookupMemberCodeRequest;
 use App\Modules\Onboarding\Http\Requests\StoreParentContextRequest;
@@ -57,17 +56,6 @@ class OnboardingController extends Controller
             $this->familyJoinService->joinByMemberCode(
                 $request->user(),
                 $request->validated(),
-            )
-        );
-    }
-
-    public function findByRelatives(FindFamilyByRelativesRequest $request): JsonResponse
-    {
-        return response()->json(
-            $this->familyJoinService->findFamiliesByRelatives(
-                $request->user(),
-                $request->validated('answers'),
-                (array) ($request->validated('parent_context') ?? []),
             )
         );
     }

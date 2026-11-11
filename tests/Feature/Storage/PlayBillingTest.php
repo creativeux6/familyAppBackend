@@ -83,6 +83,31 @@ class PlayBillingTest extends TestCase
         $this->assertTrue($this->play->acknowledged);
     }
 
+    public function test_stub_verify_applies_paid_plan_without_credentials(): void
+    {
+        config([
+            'google_play.stub_verify' => true,
+            'google_play.client_email' => null,
+            'google_play.private_key' => null,
+            'google_play.credentials_path' => null,
+        ]);
+        // Re-bind so the stub is chosen after config change.
+        $this->app->forgetInstance(GooglePlayClientInterface::class);
+        $this->app->forgetInstance(\App\Modules\StoragePlans\Services\GooglePlayDeveloperClient::class);
+
+        $user = $this->createUserWithFamily();
+        $this->actingAsUser($user);
+        $plan = $this->makePaidPlan();
+
+        $this->postJson('/api/v1/storage/play/verify', [
+            'purchase_token' => 'stub-token',
+            'product_id' => 'tijori_personal',
+            'storage_plan_uuid' => $plan->uuid,
+        ])->assertOk()
+            ->assertJsonPath('source', 'google_play')
+            ->assertJsonPath('plan.slug', 'personal-play');
+    }
+
     public function test_rtdn_expired_drops_to_free(): void
     {
         $user = $this->createUserWithFamily();

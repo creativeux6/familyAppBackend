@@ -59,6 +59,7 @@ export function UsersPage() {
   const [selected, setSelected] = useState(null);
   const [assignPlanUuid, setAssignPlanUuid] = useState('');
   const [overrideGb, setOverrideGb] = useState('');
+  const [editEmail, setEditEmail] = useState('');
 
   useEffect(() => {
     if (!isAdmin) return undefined;
@@ -126,6 +127,7 @@ export function UsersPage() {
     try {
       const detail = await api(`/admin/users/${uuid}`);
       setSelected(detail);
+      setEditEmail(detail.user?.email || '');
       setAssignPlanUuid(detail.storage?.plan?.uuid || detail.plan_assignment?.plan?.uuid || '');
       const quotaBytes = detail.storage?.quota_bytes;
       const planQuota = detail.storage?.plan?.storage_limit_bytes
@@ -141,6 +143,25 @@ export function UsersPage() {
       );
     } catch (err) {
       setError(err.message || 'Could not load user');
+    } finally {
+      setBusyUuid('');
+    }
+  }
+
+  async function saveUserEmail() {
+    if (!selected?.user?.uuid) return;
+    setBusyUuid(selected.user.uuid);
+    setError('');
+    try {
+      const detail = await api(`/admin/users/${selected.user.uuid}`, {
+        method: 'PATCH',
+        body: { email: editEmail.trim() || null },
+      });
+      setSelected(detail);
+      setEditEmail(detail.user?.email || '');
+      await refreshList();
+    } catch (err) {
+      setError(err.message || 'Could not update email');
     } finally {
       setBusyUuid('');
     }
@@ -508,6 +529,31 @@ export function UsersPage() {
                 onClick={() => setSelected(null)}
               >
                 Close
+              </button>
+            </div>
+
+            <div className="mb-4 space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <h3 className="text-sm font-semibold text-slate-800">Account email</h3>
+              <p className="text-xs text-slate-500">
+                Used for password-reset OTP and login alerts. Phone: {selected.user?.phone || '—'}
+              </p>
+              <label className="block text-xs text-slate-500">
+                Email
+                <input
+                  type="email"
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  placeholder="member@example.com"
+                  className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                />
+              </label>
+              <button
+                type="button"
+                disabled={busyUuid === selected.user?.uuid}
+                onClick={saveUserEmail}
+                className="w-full rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-40"
+              >
+                Save email
               </button>
             </div>
 
