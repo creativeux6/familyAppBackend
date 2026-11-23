@@ -13,6 +13,16 @@ class JoinRelationOptionsResolver
     /**
      * @return list<array{code: string, label: string, group: string}>
      */
+    /**
+     * Full relation picker for member-code join (includes paternal/maternal sides).
+     *
+     * @return list<array{code: string, label: string, group: string}>
+     */
+    public function optionsForMemberCodeJoin(): array
+    {
+        return $this->broadOptions();
+    }
+
     public function optionsForSearchSlot(?string $searchSlot): array
     {
         if ($searchSlot === null || $searchSlot === '') {

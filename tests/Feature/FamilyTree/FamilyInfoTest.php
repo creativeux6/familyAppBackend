@@ -31,6 +31,91 @@ class FamilyInfoTest extends TestCase
             ->assertJsonPath('family_info.mother.last_name', 'Khan');
     }
 
+    public function test_marriage_date_only_patch_does_not_unlink_relatives(): void
+    {
+        $user = $this->createUserWithFamily(['display_name' => 'Ahmed']);
+        FamilyMember::query()->where('user_id', $user->id)->firstOrFail()
+            ->update(['first_name' => 'Ahmed', 'last_name' => 'Ali', 'gender' => 'male']);
+        $this->actingAsUser($user);
+
+        $setup = $this->patchJson('/api/v1/family-tree/family-info', [
+            'father' => [
+                'first_name' => 'Omar',
+                'last_name' => 'Ali',
+                'gender' => 'male',
+            ],
+            'mother' => [
+                'first_name' => 'Fatima',
+                'last_name' => 'Khan',
+                'gender' => 'female',
+            ],
+            'spouse' => [
+                'first_name' => 'Sara',
+                'last_name' => 'Ali',
+                'gender' => 'female',
+            ],
+            'children' => [
+                [
+                    'first_name' => 'Yusuf',
+                    'last_name' => 'Ali',
+                    'gender' => 'male',
+                ],
+            ],
+        ]);
+        $setup->assertOk();
+
+        $response = $this->patchJson('/api/v1/family-tree/family-info', [
+            'marriage_date' => '2018-06-15',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('family_info.father.first_name', 'Omar')
+            ->assertJsonPath('family_info.mother.first_name', 'Fatima')
+            ->assertJsonPath('family_info.spouses.0.first_name', 'Sara')
+            ->assertJsonPath('family_info.children.0.first_name', 'Yusuf')
+            ->assertJsonPath('family_info.marriage_date', '2018-06-15');
+    }
+
+    public function test_mother_only_patch_keeps_father_and_spouse(): void
+    {
+        $user = $this->createUserWithFamily(['display_name' => 'Ahmed']);
+        FamilyMember::query()->where('user_id', $user->id)->firstOrFail()
+            ->update(['first_name' => 'Ahmed', 'last_name' => 'Ali', 'gender' => 'male']);
+        $this->actingAsUser($user);
+
+        $this->patchJson('/api/v1/family-tree/family-info', [
+            'father' => [
+                'first_name' => 'Omar',
+                'last_name' => 'Ali',
+                'gender' => 'male',
+            ],
+            'mother' => [
+                'first_name' => 'Fatima',
+                'last_name' => 'Khan',
+                'gender' => 'female',
+            ],
+            'spouse' => [
+                'first_name' => 'Sara',
+                'last_name' => 'Ali',
+                'gender' => 'female',
+            ],
+        ])->assertOk();
+
+        $response = $this->patchJson('/api/v1/family-tree/family-info', [
+            'mother' => [
+                'first_name' => 'Fatima',
+                'last_name' => 'Khan',
+                'gender' => 'female',
+                'is_living' => true,
+            ],
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('family_info.father.first_name', 'Omar')
+            ->assertJsonPath('family_info.mother.first_name', 'Fatima')
+            ->assertJsonPath('family_info.spouses.0.first_name', 'Sara');
+    }
+
     public function test_family_info_requires_authentication(): void
     {
         $this->getJson('/api/v1/family-tree/family-info')

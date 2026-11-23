@@ -99,7 +99,7 @@ class AddFamilyMemberTest extends TestCase
             ->assertJsonValidationErrors(['spouse_uuid']);
     }
 
-    public function test_paternal_grandfather_requires_father(): void
+    public function test_paternal_grandfather_creates_father_stub_when_missing(): void
     {
         $user = $this->createUserWithFamily(['display_name' => 'Ahmed']);
         FamilyMember::query()->where('user_id', $user->id)->firstOrFail()
@@ -112,10 +112,13 @@ class AddFamilyMemberTest extends TestCase
             'first_name' => 'Hassan',
             'last_name' => 'Ali',
             'gender' => 'male',
-        ])->assertStatus(500)
-            ->assertJsonFragment([
-                'message' => 'Add your father before adding paternal grandparents.',
-            ]);
+        ])->assertCreated()
+            ->assertJsonPath('member.first_name', 'Hassan');
+
+        $this->getJson('/api/v1/family-tree/family-info')
+            ->assertOk()
+            ->assertJsonPath('family_info.father.first_name', 'Father')
+            ->assertJsonPath('family_info.paternal_grandfather.first_name', 'Hassan');
     }
 
     public function test_paternal_grandfather_attaches_to_father(): void
@@ -150,7 +153,7 @@ class AddFamilyMemberTest extends TestCase
             ->assertJsonPath('family_info.paternal_grandfather.first_name', 'Hassan');
     }
 
-    public function test_paternal_uncle_requires_father(): void
+    public function test_paternal_uncle_creates_father_stub_when_missing(): void
     {
         $user = $this->createUserWithFamily(['display_name' => 'Ahmed']);
         FamilyMember::query()->where('user_id', $user->id)->firstOrFail()
@@ -163,10 +166,13 @@ class AddFamilyMemberTest extends TestCase
             'first_name' => 'Karim',
             'last_name' => 'Ali',
             'gender' => 'male',
-        ])->assertStatus(500)
-            ->assertJsonFragment([
-                'message' => 'Add your father before adding a paternal uncle or aunt.',
-            ]);
+        ])->assertCreated()
+            ->assertJsonPath('member.first_name', 'Karim');
+
+        $this->getJson('/api/v1/family-tree/family-info')
+            ->assertOk()
+            ->assertJsonPath('family_info.father.first_name', 'Father')
+            ->assertJsonPath('family_info.paternal_uncles.0.first_name', 'Karim');
     }
 
     public function test_paternal_uncle_shares_fathers_parents(): void

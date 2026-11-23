@@ -128,6 +128,26 @@ class FamilyMemberGraphService
                 ->map(fn (FamilyMember $sibling) => $this->formatRelative($sibling))
                 ->values()
                 ->all(),
+            'paternal_uncles' => $this->formatParentSiblings(
+                $selfParents['father'] ?? null,
+                $user,
+                'male',
+            ),
+            'paternal_aunts' => $this->formatParentSiblings(
+                $selfParents['father'] ?? null,
+                $user,
+                'female',
+            ),
+            'maternal_uncles' => $this->formatParentSiblings(
+                $selfParents['mother'] ?? null,
+                $user,
+                'male',
+            ),
+            'maternal_aunts' => $this->formatParentSiblings(
+                $selfParents['mother'] ?? null,
+                $user,
+                'female',
+            ),
             'marriage_date' => $primarySpouse
                 ? $this->marriageDateBetween($selfMember, $primarySpouse)?->format('Y-m-d')
                 : null,
@@ -137,30 +157,176 @@ class FamilyMemberGraphService
     /** @param  array<string, mixed>  $data */
     public function syncMatchingInfo(FamilyMember $selfMember, array $data, User $user): void
     {
-        $this->syncParentStub(
-            $selfMember,
-            $selfMember,
-            'father',
-            $data['father'] ?? null,
-            'male',
-            $user,
-        );
-        $this->syncParentStub(
-            $selfMember,
-            $selfMember,
-            'mother',
-            $data['mother'] ?? null,
-            'female',
-            $user,
-        );
+        // Partial PATCH: only sync keys that are present. Omitted keys must not
+        // delete existing relatives (e.g. profile saving marriage_date alone).
+        if (array_key_exists('father', $data)) {
+            $this->syncParentStub(
+                $selfMember,
+                $selfMember,
+                'father',
+                $data['father'],
+                'male',
+                $user,
+            );
+        }
+        if (array_key_exists('mother', $data)) {
+            $this->syncParentStub(
+                $selfMember,
+                $selfMember,
+                'mother',
+                $data['mother'],
+                'female',
+                $user,
+            );
+        }
 
-        $this->syncSpouses($selfMember, $this->normalizeSpousesPayload($data), $user);
+        if (array_key_exists('spouses', $data) || array_key_exists('spouse', $data)) {
+            $this->syncSpouses($selfMember, $this->normalizeSpousesPayload($data), $user);
+        } elseif (array_key_exists('marriage_date', $data)) {
+            $spouse = $this->findSpouseMember($selfMember);
+            if ($spouse instanceof FamilyMember) {
+                $this->syncMarriageDate(
+                    $selfMember,
+                    $spouse,
+                    $data['marriage_date'],
+                );
+            }
+        }
 
-        $this->syncChildren($selfMember, $data['children'] ?? [], $user->id);
+        if (array_key_exists('children', $data)) {
+            $this->syncChildren($selfMember, $data['children'] ?? [], $user->id);
+        }
 
         if (array_key_exists('siblings', $data)) {
             $this->syncSiblings($selfMember, $data['siblings'] ?? [], $user->id);
         }
+
+        $selfParents = $this->parentsOf($selfMember->uuid, $user);
+        $father = $selfParents['father'] ?? null;
+        $mother = $selfParents['mother'] ?? null;
+
+        $needsPaternal = array_key_exists('paternal_grandfather', $data)
+            || array_key_exists('paternal_grandmother', $data)
+            || array_key_exists('paternal_uncles', $data)
+            || array_key_exists('paternal_aunts', $data);
+        $needsMaternal = array_key_exists('maternal_grandfather', $data)
+            || array_key_exists('maternal_grandmother', $data)
+            || array_key_exists('maternal_uncles', $data)
+            || array_key_exists('maternal_aunts', $data);
+
+        if ($needsPaternal && ! $father instanceof FamilyMember) {
+            $father = $this->ensureParentLine($selfMember, 'father', $user->id);
+        }
+        if ($needsMaternal && ! $mother instanceof FamilyMember) {
+            $mother = $this->ensureParentLine($selfMember, 'mother', $user->id);
+        }
+
+        if ($father instanceof FamilyMember) {
+            if (array_key_exists('paternal_grandfather', $data)) {
+                $this->syncParentStub(
+                    $selfMember,
+                    $father,
+                    'father',
+                    $data['paternal_grandfather'] ?? null,
+                    'male',
+                    $user,
+                );
+            }
+            if (array_key_exists('paternal_grandmother', $data)) {
+                $this->syncParentStub(
+                    $selfMember,
+                    $father,
+                    'mother',
+                    $data['paternal_grandmother'] ?? null,
+                    'female',
+                    $user,
+                );
+            }
+            if (array_key_exists('paternal_uncles', $data) || array_key_exists('paternal_aunts', $data)) {
+                $this->ensureAncestorForSiblingLinks($father, 'father', $user->id);
+                $this->syncSiblings(
+                    $father,
+                    array_merge(
+                        array_map(
+                            static fn (array $row) => $row + ['gender' => $row['gender'] ?? 'male'],
+                            $data['paternal_uncles'] ?? [],
+                        ),
+                        array_map(
+                            static fn (array $row) => $row + ['gender' => $row['gender'] ?? 'female'],
+                            $data['paternal_aunts'] ?? [],
+                        ),
+                    ),
+                    $user->id,
+                );
+            }
+        }
+
+        if ($mother instanceof FamilyMember) {
+            if (array_key_exists('maternal_grandfather', $data)) {
+                $this->syncParentStub(
+                    $selfMember,
+                    $mother,
+                    'father',
+                    $data['maternal_grandfather'] ?? null,
+                    'male',
+                    $user,
+                );
+            }
+            if (array_key_exists('maternal_grandmother', $data)) {
+                $this->syncParentStub(
+                    $selfMember,
+                    $mother,
+                    'mother',
+                    $data['maternal_grandmother'] ?? null,
+                    'female',
+                    $user,
+                );
+            }
+            if (array_key_exists('maternal_uncles', $data) || array_key_exists('maternal_aunts', $data)) {
+                $this->ensureAncestorForSiblingLinks($mother, 'mother', $user->id);
+                $this->syncSiblings(
+                    $mother,
+                    array_merge(
+                        array_map(
+                            static fn (array $row) => $row + ['gender' => $row['gender'] ?? 'male'],
+                            $data['maternal_uncles'] ?? [],
+                        ),
+                        array_map(
+                            static fn (array $row) => $row + ['gender' => $row['gender'] ?? 'female'],
+                            $data['maternal_aunts'] ?? [],
+                        ),
+                    ),
+                    $user->id,
+                );
+            }
+        }
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function formatParentSiblings(
+        ?FamilyMember $parent,
+        ?User $user,
+        string $gender,
+    ): array {
+        if (! $parent instanceof FamilyMember) {
+            return [];
+        }
+
+        return $this->siblingsOf($parent->uuid, $user)
+            ->filter(function (FamilyMember $sibling) use ($gender) {
+                $siblingGender = strtolower((string) ($sibling->gender ?? ''));
+
+                if ($siblingGender === '' || $siblingGender === 'unknown' || $siblingGender === 'other') {
+                    return $gender === 'male';
+                }
+
+                return $siblingGender === $gender;
+            })
+            ->map(fn (FamilyMember $sibling) => $this->formatRelative($sibling))
+            ->values()
+            ->all();
     }
 
     /**
@@ -296,14 +462,7 @@ class FamilyMemberGraphService
         int $userId,
     ): FamilyMember {
         $line = str_starts_with($slot, 'paternal_') ? 'father' : 'mother';
-        $parent = $this->parentsOf($selfMember->uuid)[$line] ?? null;
-        if (! $parent) {
-            throw new \InvalidArgumentException(
-                $line === 'father'
-                    ? 'Add your father before adding paternal grandparents.'
-                    : 'Add your mother before adding maternal grandparents.'
-            );
-        }
+        $parent = $this->ensureParentLine($selfMember, $line, $userId);
 
         $parentSlot = str_ends_with($slot, 'grandfather') ? 'father' : 'mother';
         $defaultGender = $parentSlot === 'father' ? 'male' : 'female';
@@ -328,23 +487,7 @@ class FamilyMemberGraphService
         int $userId,
     ): FamilyMember {
         $line = str_starts_with($slot, 'paternal_') ? 'father' : 'mother';
-        $parent = $this->parentsOf($selfMember->uuid)[$line] ?? null;
-        if (! $parent) {
-            throw new \InvalidArgumentException(
-                $line === 'father'
-                    ? 'Add your father before adding a paternal uncle or aunt.'
-                    : 'Add your mother before adding a maternal uncle or aunt.'
-            );
-        }
-
-        $grandparents = $this->parentsOf($parent->uuid);
-        if ($grandparents === []) {
-            throw new \InvalidArgumentException(
-                $line === 'father'
-                    ? 'Add at least one paternal grandparent before adding a paternal uncle or aunt.'
-                    : 'Add at least one maternal grandparent before adding a maternal uncle or aunt.'
-            );
-        }
+        $parent = $this->ensureParentLine($selfMember, $line, $userId);
 
         $defaultGender = str_ends_with($slot, 'uncle') ? 'male' : 'female';
         $payload = $data;
@@ -354,11 +497,63 @@ class FamilyMemberGraphService
 
         $sibling = $this->upsertSibling($parent, $payload);
 
-        foreach ($grandparents as $grandparent) {
+        $this->ensureAncestorForSiblingLinks($parent, $line, $userId);
+        foreach ($this->parentsOf($parent->uuid) as $grandparent) {
             $this->ensureParentEdge($grandparent, $sibling, $userId);
         }
 
         return $sibling;
+    }
+
+    /**
+     * Ensure father/mother exists for a side; create a named stub when missing.
+     */
+    private function ensureParentLine(
+        FamilyMember $selfMember,
+        string $line,
+        int $userId,
+    ): FamilyMember {
+        $existing = $this->parentsOf($selfMember->uuid)[$line] ?? null;
+        if ($existing instanceof FamilyMember) {
+            return $existing;
+        }
+
+        $gender = $line === 'father' ? 'male' : 'female';
+        $parent = FamilyMember::create([
+            'uuid' => (string) Str::uuid(),
+            'family_uuid' => $selfMember->family_uuid,
+            'first_name' => $line === 'father' ? 'Father' : 'Mother',
+            'last_name' => $selfMember->last_name,
+            'gender' => $gender,
+            'is_living' => true,
+        ]);
+        $this->ensureParentEdge($parent, $selfMember, $userId);
+
+        return $parent;
+    }
+
+    /**
+     * Sibling edges are inferred via shared parents. Create a stub ancestor when none exist.
+     */
+    private function ensureAncestorForSiblingLinks(
+        FamilyMember $parent,
+        string $line,
+        int $userId,
+    ): void {
+        if ($this->parentsOf($parent->uuid) !== []) {
+            return;
+        }
+
+        $stubGender = $line === 'father' ? 'male' : 'female';
+        $stub = FamilyMember::create([
+            'uuid' => (string) Str::uuid(),
+            'family_uuid' => $parent->family_uuid,
+            'first_name' => $line === 'father' ? 'Grandfather' : 'Grandmother',
+            'last_name' => $parent->last_name,
+            'gender' => $stubGender,
+            'is_living' => true,
+        ]);
+        $this->ensureParentEdge($stub, $parent, $userId);
     }
 
     /**
@@ -1213,11 +1408,21 @@ class FamilyMemberGraphService
             }
         }
 
-        $this->assertNoFullNameCollision(
-            $this->siblingsOf($selfMember->uuid),
-            $data,
-            'sibling',
+        // Sync/restore: reuse same-named sibling instead of failing as a duplicate.
+        $byName = $this->siblingsOf($selfMember->uuid)->first(
+            fn (FamilyMember $candidate) => $this->matcher->isSameNamedPerson($data, $candidate),
         );
+        if ($byName instanceof FamilyMember) {
+            $byName->update([
+                'first_name' => $data['first_name'] ?? $byName->first_name,
+                'last_name' => $data['last_name'] ?? $byName->last_name,
+                'date_of_birth' => $data['date_of_birth'] ?? $byName->date_of_birth,
+                'gender' => $data['gender'] ?? $byName->gender,
+                ...$this->vitalityAttributes($data, $byName),
+            ]);
+
+            return $byName->fresh();
+        }
 
         $this->guardAgainstDuplicateCreate($selfMember, $data, 'sibling');
 
@@ -1259,11 +1464,21 @@ class FamilyMemberGraphService
             }
         }
 
-        $this->assertNoFullNameCollision(
-            $this->childrenOf($selfMember->uuid),
-            $data,
-            'child',
+        // Sync/restore: reuse same-named child instead of failing as a duplicate.
+        $byName = $this->childrenOf($selfMember->uuid)->first(
+            fn (FamilyMember $candidate) => $this->matcher->isSameNamedPerson($data, $candidate),
         );
+        if ($byName instanceof FamilyMember) {
+            $byName->update([
+                'first_name' => $data['first_name'] ?? $byName->first_name,
+                'last_name' => $data['last_name'] ?? $byName->last_name,
+                'date_of_birth' => $data['date_of_birth'] ?? $byName->date_of_birth,
+                'gender' => $data['gender'] ?? $byName->gender,
+                ...$this->vitalityAttributes($data, $byName),
+            ]);
+
+            return $byName->fresh();
+        }
 
         $this->guardAgainstDuplicateCreate($selfMember, $data, 'child');
 

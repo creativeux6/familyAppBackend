@@ -137,8 +137,18 @@ class FamilyJoinService
             ]);
         }
 
-        $options = $this->relationOptions->enrichOptions(
-            $this->relationOptions->optionsForSearchSlot($searchSlot),
+        // Member-code join: show all relations with father/mother-side choices.
+        // Parent names are not required — the code + chosen relation is enough.
+        $baseOptions = $searchSlot === null || $searchSlot === ''
+            ? $this->relationOptions->optionsForMemberCodeJoin()
+            : $this->relationOptions->optionsForSearchSlot($searchSlot);
+
+        $options = array_map(
+            static fn (array $option) => [
+                ...$option,
+                'requires_parents' => [],
+            ],
+            $baseOptions,
         );
 
         return [
@@ -177,20 +187,24 @@ class FamilyJoinService
         $wireContext = ['parent_names' => $parentContext];
 
         if ($relation !== 'self') {
-            $this->declaredRelatives->storeParentContext($user, $parentContext);
-            $verification = $this->joinVerification->verify($target, $relation, $parentContext);
-            if (! $verification['ok']) {
-                throw ValidationException::withMessages([
-                    'relation_to_member' => [$verification['message']],
-                ]);
-            }
+            // Member code + chosen relation is enough. Parent names are optional;
+            // when provided they help wire the correct line, otherwise stubs are created.
+            if ($this->parentContextHasAnyName($parentContext)) {
+                $this->declaredRelatives->storeParentContext($user, $parentContext);
+                $verification = $this->joinVerification->verify($target, $relation, $parentContext);
+                if (! $verification['ok']) {
+                    throw ValidationException::withMessages([
+                        'relation_to_member' => [$verification['message']],
+                    ]);
+                }
 
-            $wireContext = [
-                ...$wireContext,
-                'mother' => $verification['resolved']['mother'] ?? null,
-                'father' => $verification['resolved']['father'] ?? null,
-                'spouse' => $verification['resolved']['spouse'] ?? null,
-            ];
+                $wireContext = [
+                    ...$wireContext,
+                    'mother' => $verification['resolved']['mother'] ?? null,
+                    'father' => $verification['resolved']['father'] ?? null,
+                    'spouse' => $verification['resolved']['spouse'] ?? null,
+                ];
+            }
         }
 
         return DB::transaction(function () use ($user, $target, $relation, $data, $wireContext, $parentContext) {
@@ -486,10 +500,29 @@ class FamilyJoinService
             'family' => $familyPayload,
             'join_options' => [
                 'member_code',
-                'find_by_relatives',
             ],
             ...$this->parentContextPayload($user),
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $parentContext
+     */
+    private function parentContextHasAnyName(array $parentContext): bool
+    {
+        foreach (['mother', 'father', 'spouse'] as $slot) {
+            $data = $parentContext[$slot] ?? [];
+            if (! is_array($data)) {
+                continue;
+            }
+            $first = trim((string) ($data['first_name'] ?? ''));
+            $last = trim((string) ($data['last_name'] ?? ''));
+            if ($first !== '' || $last !== '') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** @return array{parent_context: array<string, array<string, string>>, has_parent_anchors: bool} */
