@@ -314,7 +314,9 @@ class FamilyMemberGraphService
             return [];
         }
 
-        return $this->siblingsOf($parent->uuid, $user)
+        // Graph-only: do not merge the viewer's declared siblings into the
+        // parent's sibling list (that wrongly turns brothers/sisters into uncles/aunts).
+        return $this->siblingsOf($parent->uuid, null)
             ->filter(function (FamilyMember $sibling) use ($gender) {
                 $siblingGender = strtolower((string) ($sibling->gender ?? ''));
 
