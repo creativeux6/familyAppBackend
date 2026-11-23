@@ -1,0 +1,390 @@
+{
+    "user": {
+        "id": 4,
+        "display_name": "waheed",
+        "phone": "+923087119409"
+    },
+    "member": {
+        "uuid": "28a0025f-b3a7-4743-a012-2184b5505587",
+        "first_name": "waheed",
+        "last_name": "waheed",
+        "member_code": "MDMZCD9W"
+    },
+    "family_info": {
+        "father": {
+            "uuid": "9d0c1677-cada-4f57-b798-d0ac7831e9ef",
+            "member_code": "MSFE2TZG",
+            "first_name": "Khurshid",
+            "last_name": "Alam",
+            "date_of_birth": null,
+            "date_of_death": null,
+            "gender": "male",
+            "is_living": true,
+            "is_registered": false
+        },
+        "mother": {
+            "uuid": "d7993cfb-1e84-47d4-8d94-3fc25f6ba788",
+            "member_code": "M2QRFRRD",
+            "first_name": "Nazira",
+            "last_name": "Bibi",
+            "date_of_birth": null,
+            "date_of_death": null,
+            "gender": "female",
+            "is_living": true,
+            "is_registered": false
+        },
+        "paternal_grandfather": null,
+        "paternal_grandmother": null,
+        "maternal_grandfather": null,
+        "maternal_grandmother": null,
+        "has_multiple_partners": false,
+        "spouses": [
+            {
+                "uuid": "6aa1f13f-a530-4487-9925-92841b0eabf0",
+                "member_code": "MNMVS6X5",
+                "first_name": "Ambreen",
+                "last_name": "Younas",
+                "date_of_birth": null,
+                "date_of_death": null,
+                "gender": "female",
+                "is_living": true,
+                "is_registered": false,
+                "marriage_date": null,
+                "father": {
+                    "uuid": "10e63819-f4fa-4c8a-be0c-1df64915362d",
+                    "member_code": "MYJJT2LA",
+                    "first_name": "Muhammad",
+                    "last_name": "Younas",
+                    "date_of_birth": null,
+                    "date_of_death": null,
+                    "gender": "male",
+                    "is_living": true,
+                    "is_registered": false
+                },
+                "mother": {
+                    "uuid": "e38b2c08-e249-472e-923b-2dec262ee373",
+                    "member_code": "MNSEXVEJ",
+                    "first_name": "Saba",
+                    "last_name": "Younas",
+                    "date_of_birth": null,
+                    "date_of_death": null,
+                    "gender": "female",
+                    "is_living": true,
+                    "is_registered": false
+                }
+            }
+        ],
+        "spouse": {
+            "uuid": "6aa1f13f-a530-4487-9925-92841b0eabf0",
+            "member_code": "MNMVS6X5",
+            "first_name": "Ambreen",
+            "last_name": "Younas",
+            "date_of_birth": null,
+            "date_of_death": null,
+            "gender": "female",
+            "is_living": true,
+            "is_registered": false
+        },
+        "spouse_father": {
+            "uuid": "10e63819-f4fa-4c8a-be0c-1df64915362d",
+            "member_code": "MYJJT2LA",
+            "first_name": "Muhammad",
+            "last_name": "Younas",
+            "date_of_birth": null,
+            "date_of_death": null,
+            "gender": "male",
+            "is_living": true,
+            "is_registered": false
+        },
+        "spouse_mother": {
+            "uuid": "e38b2c08-e249-472e-923b-2dec262ee373",
+            "member_code": "MNSEXVEJ",
+            "first_name": "Saba",
+            "last_name": "Younas",
+            "date_of_birth": null,
+            "date_of_death": null,
+            "gender": "female",
+            "is_living": true,
+            "is_registered": false
+        },
+        "children": [
+            {
+                "uuid": "696ad2c5-77df-4f72-af1f-86f7926c69bc",
+                "member_code": "MY8PDEN9",
+                "first_name": "Muhammad",
+                "last_name": "Ayan",
+                "date_of_birth": null,
+                "date_of_death": null,
+                "gender": "male",
+                "is_living": true,
+                "is_registered": false,
+                "other_parent_uuid": "6aa1f13f-a530-4487-9925-92841b0eabf0"
+            }
+        ],
+        "siblings": [
+            {
+                "uuid": "285cfc78-4661-4b23-af38-53a5019c4969",
+                "member_code": "MVVDPY3Q",
+                "first_name": "Sidra",
+                "last_name": "Khurshid",
+                "date_of_birth": null,
+                "date_of_death": null,
+                "gender": "female",
+                "is_living": true,
+                "is_registered": false
+            },
+            {
+                "uuid": "8ed435d8-6f55-49e8-81fe-5db231df38a6",
+                "member_code": "MN2LBXEA",
+                "first_name": "Muhammad",
+                "last_name": "Adeel",
+                "date_of_birth": null,
+                "date_of_death": null,
+                "gender": "male",
+                "is_living": true,
+                "is_registered": false
+            },
+            {
+                "uuid": "efa41d24-d7d5-41f7-b874-cbb8671f4c26",
+                "member_code": "MM7C25H3",
+                "first_name": "Sehar",
+                "last_name": "Khurshid",
+                "date_of_birth": null,
+                "date_of_death": null,
+                "gender": "female",
+                "is_living": true,
+                "is_registered": false
+            }
+        ],
+        "paternal_uncles": [
+            {
+                "uuid": "8ed435d8-6f55-49e8-81fe-5db231df38a6",
+                "member_code": "MN2LBXEA",
+                "first_name": "Muhammad",
+                "last_name": "Adeel",
+                "date_of_birth": null,
+                "date_of_death": null,
+                "gender": "male",
+                "is_living": true,
+                "is_registered": false
+            }
+        ],
+        "paternal_aunts": [
+            {
+                "uuid": "285cfc78-4661-4b23-af38-53a5019c4969",
+                "member_code": "MVVDPY3Q",
+                "first_name": "Sidra",
+                "last_name": "Khurshid",
+                "date_of_birth": null,
+                "date_of_death": null,
+                "gender": "female",
+                "is_living": true,
+                "is_registered": false
+            },
+            {
+                "uuid": "efa41d24-d7d5-41f7-b874-cbb8671f4c26",
+                "member_code": "MM7C25H3",
+                "first_name": "Sehar",
+                "last_name": "Khurshid",
+                "date_of_birth": null,
+                "date_of_death": null,
+                "gender": "female",
+                "is_living": true,
+                "is_registered": false
+            }
+        ],
+        "maternal_uncles": [
+            {
+                "uuid": "8ed435d8-6f55-49e8-81fe-5db231df38a6",
+                "member_code": "MN2LBXEA",
+                "first_name": "Muhammad",
+                "last_name": "Adeel",
+                "date_of_birth": null,
+                "date_of_death": null,
+                "gender": "male",
+                "is_living": true,
+                "is_registered": false
+            }
+        ],
+        "maternal_aunts": [
+            {
+                "uuid": "285cfc78-4661-4b23-af38-53a5019c4969",
+                "member_code": "MVVDPY3Q",
+                "first_name": "Sidra",
+                "last_name": "Khurshid",
+                "date_of_birth": null,
+                "date_of_death": null,
+                "gender": "female",
+                "is_living": true,
+                "is_registered": false
+            },
+            {
+                "uuid": "efa41d24-d7d5-41f7-b874-cbb8671f4c26",
+                "member_code": "MM7C25H3",
+                "first_name": "Sehar",
+                "last_name": "Khurshid",
+                "date_of_birth": null,
+                "date_of_death": null,
+                "gender": "female",
+                "is_living": true,
+                "is_registered": false
+            }
+        ],
+        "marriage_date": null
+    },
+    "declared": [
+        {
+            "uuid": "2cb85aa9-fe16-4ca6-bb62-cbbf2f1c63b1",
+            "user_id": 4,
+            "relation_type": "child",
+            "relation_index": 0,
+            "first_name": "Muhammad",
+            "last_name": "Ayan",
+            "maiden_name": null,
+            "date_of_birth": null,
+            "date_of_death": null,
+            "birthplace": null,
+            "gender": "male",
+            "is_living": true,
+            "member_uuid": "696ad2c5-77df-4f72-af1f-86f7926c69bc",
+            "created_at": "2026-09-16T20:29:02.000000Z",
+            "updated_at": "2026-09-16T20:29:02.000000Z"
+        },
+        {
+            "uuid": "3e4f4b3a-d6fe-4026-a9b6-f2630ec2c4bd",
+            "user_id": 4,
+            "relation_type": "mother",
+            "relation_index": 0,
+            "first_name": "Nazira",
+            "last_name": "Bibi",
+            "maiden_name": null,
+            "date_of_birth": null,
+            "date_of_death": null,
+            "birthplace": null,
+            "gender": "female",
+            "is_living": true,
+            "member_uuid": "d7993cfb-1e84-47d4-8d94-3fc25f6ba788",
+            "created_at": "2026-09-16T20:24:41.000000Z",
+            "updated_at": "2026-09-16T20:24:41.000000Z"
+        },
+        {
+            "uuid": "46367daa-2b19-4419-a4b5-1808e0243a19",
+            "user_id": 4,
+            "relation_type": "spouse",
+            "relation_index": 0,
+            "first_name": "Ambreen",
+            "last_name": "Younas",
+            "maiden_name": null,
+            "date_of_birth": null,
+            "date_of_death": null,
+            "birthplace": null,
+            "gender": "female",
+            "is_living": true,
+            "member_uuid": "6aa1f13f-a530-4487-9925-92841b0eabf0",
+            "created_at": "2026-09-16T20:24:59.000000Z",
+            "updated_at": "2026-09-16T20:24:59.000000Z"
+        },
+        {
+            "uuid": "6b327419-2456-42d3-a09b-781879843443",
+            "user_id": 4,
+            "relation_type": "sibling",
+            "relation_index": 1,
+            "first_name": "Muhammad",
+            "last_name": "Adeel",
+            "maiden_name": null,
+            "date_of_birth": null,
+            "date_of_death": null,
+            "birthplace": null,
+            "gender": "male",
+            "is_living": true,
+            "member_uuid": "8ed435d8-6f55-49e8-81fe-5db231df38a6",
+            "created_at": "2026-09-16T20:25:53.000000Z",
+            "updated_at": "2026-09-16T20:31:13.000000Z"
+        },
+        {
+            "uuid": "70f74a52-1c35-40e5-970a-c6654c7a730a",
+            "user_id": 4,
+            "relation_type": "father",
+            "relation_index": 0,
+            "first_name": "Khurshid",
+            "last_name": "Alam",
+            "maiden_name": null,
+            "date_of_birth": null,
+            "date_of_death": null,
+            "birthplace": null,
+            "gender": "male",
+            "is_living": true,
+            "member_uuid": "9d0c1677-cada-4f57-b798-d0ac7831e9ef",
+            "created_at": "2026-09-16T20:23:53.000000Z",
+            "updated_at": "2026-09-16T20:23:53.000000Z"
+        },
+        {
+            "uuid": "991526b2-9a2c-4ed3-9ae0-3defcd969b7d",
+            "user_id": 4,
+            "relation_type": "spouse_father",
+            "relation_index": 0,
+            "first_name": "Muhammad",
+            "last_name": "Younas",
+            "maiden_name": null,
+            "date_of_birth": null,
+            "date_of_death": null,
+            "birthplace": null,
+            "gender": "male",
+            "is_living": true,
+            "member_uuid": "10e63819-f4fa-4c8a-be0c-1df64915362d",
+            "created_at": "2026-09-16T20:26:48.000000Z",
+            "updated_at": "2026-09-16T20:26:48.000000Z"
+        },
+        {
+            "uuid": "b48862e7-8d5e-45dc-a0b1-34523708da98",
+            "user_id": 4,
+            "relation_type": "spouse_mother",
+            "relation_index": 0,
+            "first_name": "Saba",
+            "last_name": "Younas",
+            "maiden_name": null,
+            "date_of_birth": null,
+            "date_of_death": null,
+            "birthplace": null,
+            "gender": "female",
+            "is_living": true,
+            "member_uuid": "e38b2c08-e249-472e-923b-2dec262ee373",
+            "created_at": "2026-09-16T20:27:58.000000Z",
+            "updated_at": "2026-09-16T20:27:58.000000Z"
+        },
+        {
+            "uuid": "e46139ea-635e-4de9-b803-8ca5c2782efc",
+            "user_id": 4,
+            "relation_type": "sibling",
+            "relation_index": 0,
+            "first_name": "Sidra",
+            "last_name": "Khurshid",
+            "maiden_name": null,
+            "date_of_birth": null,
+            "date_of_death": null,
+            "birthplace": null,
+            "gender": "female",
+            "is_living": true,
+            "member_uuid": "285cfc78-4661-4b23-af38-53a5019c4969",
+            "created_at": "2026-09-16T20:25:39.000000Z",
+            "updated_at": "2026-09-16T20:31:13.000000Z"
+        },
+        {
+            "uuid": "f5bf0f12-ebe7-48c8-9db3-2dd9f016c2a0",
+            "user_id": 4,
+            "relation_type": "sibling",
+            "relation_index": 2,
+            "first_name": "Sehar",
+            "last_name": "Khurshid",
+            "maiden_name": null,
+            "date_of_birth": null,
+            "date_of_death": null,
+            "birthplace": null,
+            "gender": "female",
+            "is_living": true,
+            "member_uuid": "efa41d24-d7d5-41f7-b874-cbb8671f4c26",
+            "created_at": "2026-09-16T20:31:13.000000Z",
+            "updated_at": "2026-09-16T20:31:13.000000Z"
+        }
+    ]
+}

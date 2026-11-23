@@ -20,11 +20,12 @@ class RestoreFamilyInfoCommand extends Command
     protected $signature = 'family-tree:restore-family-info
                             {--phone= : User phone, e.g. +923087119409}
                             {--user= : User id}
+                            {--preset= : Built-in snapshot name, e.g. waheed}
                             {--file= : JSON snapshot with family_info (and optional declared)}
                             {--strip-uuids : Always drop relative uuids (force recreate by name)}
                             {--dry-run : Show the payload without writing}';
 
-    protected $description = 'Restore mother/spouse/children/siblings links from a snapshot or declared relatives.';
+    protected $description = 'Restore mother/spouse/children/siblings links from a preset, snapshot file, or declared relatives.';
 
     public function handle(FamilyTreeService $familyTree): int
     {
@@ -44,7 +45,7 @@ class RestoreFamilyInfoCommand extends Command
 
         $payload = $this->resolvePayload($user);
         if ($payload === []) {
-            $this->error('No restore payload. Provide --file= or ensure user_declared_relatives has rows.');
+            $this->error('No restore payload. Use --preset=waheed, --file=..., or ensure declared relatives exist.');
 
             return self::FAILURE;
         }
@@ -112,9 +113,16 @@ class RestoreFamilyInfoCommand extends Command
     private function resolvePayload(User $user): array
     {
         $file = trim((string) $this->option('file'));
+        $preset = trim((string) $this->option('preset'));
+
+        if ($file === '' && $preset !== '') {
+            $file = database_path('recovery/'.$preset.'_family_info_snapshot.json');
+        }
+
         if ($file !== '') {
             if (! is_file($file)) {
                 $this->error("File not found: {$file}");
+                $this->line('After git pull, presets live in database/recovery/');
 
                 return [];
             }
