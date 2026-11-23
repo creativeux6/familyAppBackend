@@ -749,6 +749,17 @@ class FamilyMemberGraphService
             return $existing->fresh();
         }
 
+        // Restore / re-link: reuse same-named person already in this family.
+        $byName = $this->findSameNamedInFamily($selfMember, $data);
+        if (
+            $byName instanceof FamilyMember
+            && ! $this->isInvalidParentCandidate($selfMember, $slot, $byName)
+        ) {
+            $byName->update($this->matchingAttributes($selfMember, $data, $defaultGender, $byName));
+
+            return $byName->fresh();
+        }
+
         $this->guardAgainstDuplicateCreate($selfMember, $data, $slot);
 
         return FamilyMember::create([
@@ -1266,7 +1277,7 @@ class FamilyMemberGraphService
             }
         }
 
-        $existingSpouses = $this->findSpouseMembers($selfMember);
+        $existingSpouses = $this->findSpouseMembers($selfMember)->values();
         $existing = $existingSpouses->get($index);
         $attributes = $this->matchingAttributes(
             $selfMember,
@@ -1279,6 +1290,19 @@ class FamilyMemberGraphService
             $existing->update($attributes);
 
             return $existing->fresh();
+        }
+
+        // Restore / re-link: reuse same-named person already in this family.
+        $byName = $this->findSameNamedInFamily($selfMember, $data);
+        if ($byName instanceof FamilyMember) {
+            $byName->update($this->matchingAttributes(
+                $selfMember,
+                $data,
+                $this->defaultGenderForSlot('spouse'),
+                $byName,
+            ));
+
+            return $byName->fresh();
         }
 
         $this->guardAgainstDuplicateCreate($selfMember, $data, 'spouse');
@@ -1408,10 +1432,10 @@ class FamilyMemberGraphService
             }
         }
 
-        // Sync/restore: reuse same-named sibling instead of failing as a duplicate.
+        // Sync/restore: reuse same-named sibling (linked or still in family).
         $byName = $this->siblingsOf($selfMember->uuid)->first(
             fn (FamilyMember $candidate) => $this->matcher->isSameNamedPerson($data, $candidate),
-        );
+        ) ?? $this->findSameNamedInFamily($selfMember, $data);
         if ($byName instanceof FamilyMember) {
             $byName->update([
                 'first_name' => $data['first_name'] ?? $byName->first_name,
@@ -1464,10 +1488,10 @@ class FamilyMemberGraphService
             }
         }
 
-        // Sync/restore: reuse same-named child instead of failing as a duplicate.
+        // Sync/restore: reuse same-named child (linked or still in family).
         $byName = $this->childrenOf($selfMember->uuid)->first(
             fn (FamilyMember $candidate) => $this->matcher->isSameNamedPerson($data, $candidate),
-        );
+        ) ?? $this->findSameNamedInFamily($selfMember, $data);
         if ($byName instanceof FamilyMember) {
             $byName->update([
                 'first_name' => $data['first_name'] ?? $byName->first_name,
@@ -1732,6 +1756,17 @@ class FamilyMemberGraphService
         $spouseUuids = $this->spouseUuidsFor($selfMember->uuid);
 
         return $spouseUuids !== [] && in_array($candidate->uuid, $spouseUuids, true);
+    }
+
+    /** @param  array<string, mixed>  $data */
+    private function findSameNamedInFamily(FamilyMember $selfMember, array $data): ?FamilyMember
+    {
+        return FamilyMember::query()
+            ->where('family_uuid', $selfMember->family_uuid)
+            ->get()
+            ->first(
+                fn (FamilyMember $candidate) => $this->matcher->isSameNamedPerson($data, $candidate),
+            );
     }
 
     /** @param  array<string, mixed>  $data */

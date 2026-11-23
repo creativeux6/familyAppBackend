@@ -56,6 +56,18 @@ class RestoreFamilyInfoCommand extends Command
             ? $this->stripRelativeUuids($payload)
             : $this->pruneMissingUuids($payload);
 
+        // Snapshot other_parent_uuid may be from another environment — let
+        // single-spouse auto-link handle co-parent instead.
+        if (isset($payload['children']) && is_array($payload['children'])) {
+            $payload['children'] = array_map(static function ($child) {
+                if (is_array($child)) {
+                    unset($child['other_parent_uuid']);
+                }
+
+                return $child;
+            }, $payload['children']);
+        }
+
         $this->info("Restoring family links for {$user->display_name} ({$user->phone}) / member {$self->uuid}");
         $this->line(json_encode([
             'father' => $payload['father']['first_name'] ?? null,
