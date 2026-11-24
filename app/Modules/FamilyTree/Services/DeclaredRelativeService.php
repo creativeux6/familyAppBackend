@@ -86,8 +86,14 @@ class DeclaredRelativeService
     /** @param  array<string, mixed>  $data */
     public function syncMatchingInfo(User $user, array $data): void
     {
-        $this->upsertDeclared($user, 'father', 0, $data['father'] ?? null);
-        $this->upsertDeclared($user, 'mother', 0, $data['mother'] ?? null);
+        // Merge-only: upsert when data has names. Never delete declared rows from
+        // empty/partial form payloads (that wiped the tree after profile saves).
+        if (array_key_exists('father', $data) && $this->graphService()->relativeHasInfo($data['father'] ?? null)) {
+            $this->upsertDeclared($user, 'father', 0, $data['father']);
+        }
+        if (array_key_exists('mother', $data) && $this->graphService()->relativeHasInfo($data['mother'] ?? null)) {
+            $this->upsertDeclared($user, 'mother', 0, $data['mother']);
+        }
 
         $spouses = [];
         if (array_key_exists('spouses', $data) && is_array($data['spouses'])) {
@@ -100,85 +106,32 @@ class DeclaredRelativeService
             ]];
         }
 
-        $existingSpouses = UserDeclaredRelative::query()
-            ->where('user_id', $user->id)
-            ->where('relation_type', 'spouse')
-            ->get();
-        $existingSpouseFathers = UserDeclaredRelative::query()
-            ->where('user_id', $user->id)
-            ->where('relation_type', 'spouse_father')
-            ->get();
-        $existingSpouseMothers = UserDeclaredRelative::query()
-            ->where('user_id', $user->id)
-            ->where('relation_type', 'spouse_mother')
-            ->get();
-
-        $spouseCount = 0;
         foreach ($spouses as $index => $spouseData) {
-            if (! $this->graphService()->relativeHasInfo($spouseData)) {
+            if (! is_array($spouseData) || ! $this->graphService()->relativeHasInfo($spouseData)) {
                 continue;
             }
 
             $this->upsertDeclared($user, 'spouse', $index, $spouseData);
-            $this->upsertDeclared($user, 'spouse_father', $index, $spouseData['father'] ?? null);
-            $this->upsertDeclared($user, 'spouse_mother', $index, $spouseData['mother'] ?? null);
-            $spouseCount++;
-        }
-
-        foreach ($existingSpouses as $existing) {
-            if ($existing->relation_index >= $spouseCount) {
-                $existing->delete();
+            if ($this->graphService()->relativeHasInfo($spouseData['father'] ?? null)) {
+                $this->upsertDeclared($user, 'spouse_father', $index, $spouseData['father']);
             }
-        }
-        foreach ($existingSpouseFathers as $existing) {
-            if ($existing->relation_index >= $spouseCount) {
-                $existing->delete();
-            }
-        }
-        foreach ($existingSpouseMothers as $existing) {
-            if ($existing->relation_index >= $spouseCount) {
-                $existing->delete();
+            if ($this->graphService()->relativeHasInfo($spouseData['mother'] ?? null)) {
+                $this->upsertDeclared($user, 'spouse_mother', $index, $spouseData['mother']);
             }
         }
 
-        $children = $data['children'] ?? [];
-        $existingChildren = UserDeclaredRelative::query()
-            ->where('user_id', $user->id)
-            ->where('relation_type', 'child')
-            ->get();
-
-        foreach ($children as $index => $childData) {
-            if (! $this->graphService()->relativeHasInfo($childData)) {
+        foreach (is_array($data['children'] ?? null) ? $data['children'] : [] as $index => $childData) {
+            if (! is_array($childData) || ! $this->graphService()->relativeHasInfo($childData)) {
                 continue;
             }
-
             $this->upsertDeclared($user, 'child', $index, $childData);
         }
 
-        foreach ($existingChildren as $existing) {
-            if ($existing->relation_index >= count($children)) {
-                $existing->delete();
-            }
-        }
-
-        $siblings = $data['siblings'] ?? [];
-        $existingSiblings = UserDeclaredRelative::query()
-            ->where('user_id', $user->id)
-            ->where('relation_type', 'sibling')
-            ->get();
-
-        foreach ($siblings as $index => $siblingData) {
-            if (! $this->graphService()->relativeHasInfo($siblingData)) {
+        foreach (is_array($data['siblings'] ?? null) ? $data['siblings'] : [] as $index => $siblingData) {
+            if (! is_array($siblingData) || ! $this->graphService()->relativeHasInfo($siblingData)) {
                 continue;
             }
-
             $this->upsertDeclared($user, 'sibling', $index, $siblingData);
-        }
-
-        foreach ($existingSiblings as $existing) {
-            if ($existing->relation_index >= count($siblings)) {
-                $existing->delete();
-            }
         }
     }
 

@@ -35,6 +35,22 @@ class FamilyMemberGraphService
         return false;
     }
 
+    /** @param  mixed  $list */
+    private function listHasRelativeInfo(mixed $list): bool
+    {
+        if (! is_array($list)) {
+            return false;
+        }
+
+        foreach ($list as $row) {
+            if (is_array($row) && $this->relativeHasInfo($row)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /** @return array<string, mixed> */
     public function formatRelative(FamilyMember $member): array
     {
@@ -157,16 +173,18 @@ class FamilyMemberGraphService
     /** @param  array<string, mixed>  $data */
     public function syncMatchingInfo(FamilyMember $selfMember, array $data, User $user): void
     {
-        // Partial PATCH: only sync keys that are present. Omitted keys must not
-        // delete existing relatives (e.g. profile saving marriage_date alone).
+        // Safety: family-info PATCH is merge-only. Forms may add/update, but must
+        // never delete/detach relatives (profile marriage_date, partial saves, etc.).
+        // Removals require an explicit dedicated delete API, not a form save.
         if (array_key_exists('father', $data)) {
             $this->syncParentStub(
                 $selfMember,
                 $selfMember,
                 'father',
-                $data['father'],
+                is_array($data['father'] ?? null) ? $data['father'] : null,
                 'male',
                 $user,
+                allowRemove: false,
             );
         }
         if (array_key_exists('mother', $data)) {
@@ -174,14 +192,20 @@ class FamilyMemberGraphService
                 $selfMember,
                 $selfMember,
                 'mother',
-                $data['mother'],
+                is_array($data['mother'] ?? null) ? $data['mother'] : null,
                 'female',
                 $user,
+                allowRemove: false,
             );
         }
 
         if (array_key_exists('spouses', $data) || array_key_exists('spouse', $data)) {
-            $this->syncSpouses($selfMember, $this->normalizeSpousesPayload($data), $user);
+            $this->syncSpouses(
+                $selfMember,
+                $this->normalizeSpousesPayload($data),
+                $user,
+                allowRemove: false,
+            );
         } elseif (array_key_exists('marriage_date', $data)) {
             $spouse = $this->findSpouseMember($selfMember);
             if ($spouse instanceof FamilyMember) {
@@ -194,25 +218,37 @@ class FamilyMemberGraphService
         }
 
         if (array_key_exists('children', $data)) {
-            $this->syncChildren($selfMember, $data['children'] ?? [], $user->id);
+            $this->syncChildren(
+                $selfMember,
+                is_array($data['children'] ?? null) ? $data['children'] : [],
+                $user->id,
+                allowRemove: false,
+            );
         }
 
         if (array_key_exists('siblings', $data)) {
-            $this->syncSiblings($selfMember, $data['siblings'] ?? [], $user->id);
+            $this->syncSiblings(
+                $selfMember,
+                is_array($data['siblings'] ?? null) ? $data['siblings'] : [],
+                $user->id,
+                allowRemove: false,
+            );
         }
 
         $selfParents = $this->parentsOf($selfMember->uuid, $user);
         $father = $selfParents['father'] ?? null;
         $mother = $selfParents['mother'] ?? null;
 
-        $needsPaternal = array_key_exists('paternal_grandfather', $data)
-            || array_key_exists('paternal_grandmother', $data)
-            || array_key_exists('paternal_uncles', $data)
-            || array_key_exists('paternal_aunts', $data);
-        $needsMaternal = array_key_exists('maternal_grandfather', $data)
-            || array_key_exists('maternal_grandmother', $data)
-            || array_key_exists('maternal_uncles', $data)
-            || array_key_exists('maternal_aunts', $data);
+        // Only auto-create a parent line when the payload actually carries
+        // grandparent/uncle data to attach — never for null/empty form fields.
+        $needsPaternal = $this->relativeHasInfo($data['paternal_grandfather'] ?? null)
+            || $this->relativeHasInfo($data['paternal_grandmother'] ?? null)
+            || $this->listHasRelativeInfo($data['paternal_uncles'] ?? null)
+            || $this->listHasRelativeInfo($data['paternal_aunts'] ?? null);
+        $needsMaternal = $this->relativeHasInfo($data['maternal_grandfather'] ?? null)
+            || $this->relativeHasInfo($data['maternal_grandmother'] ?? null)
+            || $this->listHasRelativeInfo($data['maternal_uncles'] ?? null)
+            || $this->listHasRelativeInfo($data['maternal_aunts'] ?? null);
 
         if ($needsPaternal && ! $father instanceof FamilyMember) {
             $father = $this->ensureParentLine($selfMember, 'father', $user->id);
@@ -227,9 +263,10 @@ class FamilyMemberGraphService
                     $selfMember,
                     $father,
                     'father',
-                    $data['paternal_grandfather'] ?? null,
+                    is_array($data['paternal_grandfather'] ?? null) ? $data['paternal_grandfather'] : null,
                     'male',
                     $user,
+                    allowRemove: false,
                 );
             }
             if (array_key_exists('paternal_grandmother', $data)) {
@@ -237,9 +274,10 @@ class FamilyMemberGraphService
                     $selfMember,
                     $father,
                     'mother',
-                    $data['paternal_grandmother'] ?? null,
+                    is_array($data['paternal_grandmother'] ?? null) ? $data['paternal_grandmother'] : null,
                     'female',
                     $user,
+                    allowRemove: false,
                 );
             }
             if (array_key_exists('paternal_uncles', $data) || array_key_exists('paternal_aunts', $data)) {
@@ -249,14 +287,15 @@ class FamilyMemberGraphService
                     array_merge(
                         array_map(
                             static fn (array $row) => $row + ['gender' => $row['gender'] ?? 'male'],
-                            $data['paternal_uncles'] ?? [],
+                            is_array($data['paternal_uncles'] ?? null) ? $data['paternal_uncles'] : [],
                         ),
                         array_map(
                             static fn (array $row) => $row + ['gender' => $row['gender'] ?? 'female'],
-                            $data['paternal_aunts'] ?? [],
+                            is_array($data['paternal_aunts'] ?? null) ? $data['paternal_aunts'] : [],
                         ),
                     ),
                     $user->id,
+                    allowRemove: false,
                 );
             }
         }
@@ -267,9 +306,10 @@ class FamilyMemberGraphService
                     $selfMember,
                     $mother,
                     'father',
-                    $data['maternal_grandfather'] ?? null,
+                    is_array($data['maternal_grandfather'] ?? null) ? $data['maternal_grandfather'] : null,
                     'male',
                     $user,
+                    allowRemove: false,
                 );
             }
             if (array_key_exists('maternal_grandmother', $data)) {
@@ -277,9 +317,10 @@ class FamilyMemberGraphService
                     $selfMember,
                     $mother,
                     'mother',
-                    $data['maternal_grandmother'] ?? null,
+                    is_array($data['maternal_grandmother'] ?? null) ? $data['maternal_grandmother'] : null,
                     'female',
                     $user,
+                    allowRemove: false,
                 );
             }
             if (array_key_exists('maternal_uncles', $data) || array_key_exists('maternal_aunts', $data)) {
@@ -289,14 +330,15 @@ class FamilyMemberGraphService
                     array_merge(
                         array_map(
                             static fn (array $row) => $row + ['gender' => $row['gender'] ?? 'male'],
-                            $data['maternal_uncles'] ?? [],
+                            is_array($data['maternal_uncles'] ?? null) ? $data['maternal_uncles'] : [],
                         ),
                         array_map(
                             static fn (array $row) => $row + ['gender' => $row['gender'] ?? 'female'],
-                            $data['maternal_aunts'] ?? [],
+                            is_array($data['maternal_aunts'] ?? null) ? $data['maternal_aunts'] : [],
                         ),
                     ),
                     $user->id,
+                    allowRemove: false,
                 );
             }
         }
@@ -914,13 +956,15 @@ class FamilyMemberGraphService
         ?array $data,
         string $defaultGender,
         User $user,
+        bool $allowRemove = false,
     ): void {
         $slot = $defaultGender === 'male' ? 'father' : 'mother';
         $existingParents = $this->parentsOf($childMember->uuid, $user);
         $existing = $existingParents[$slot] ?? null;
 
         if (! $this->relativeHasInfo($data)) {
-            if ($existing && $existing->user_id === null) {
+            // Never destroy in-laws from a partial/empty form field.
+            if ($allowRemove && $existing && $existing->user_id === null) {
                 $this->deleteMemberGraph($existing);
             }
 
@@ -961,9 +1005,13 @@ class FamilyMemberGraphService
         ?array $data,
         string $defaultGender,
         User $user,
+        bool $allowRemove = false,
     ): void {
         if (! $this->relativeHasInfo($data)) {
-            $this->removeParentStub($childMember, $slot, $user);
+            // Empty/null from a form must not delete an existing parent/grandparent.
+            if ($allowRemove) {
+                $this->removeParentStub($childMember, $slot, $user);
+            }
 
             return;
         }
@@ -1087,8 +1135,12 @@ class FamilyMemberGraphService
     }
 
     /** @param  list<array<string, mixed>>  $children */
-    private function syncChildren(FamilyMember $selfMember, array $children, int $userId): void
-    {
+    private function syncChildren(
+        FamilyMember $selfMember,
+        array $children,
+        int $userId,
+        bool $allowRemove = false,
+    ): void {
         $existing = $this->childrenOf($selfMember->uuid);
         $keptUuids = [];
         $spouseUuids = $this->spouseUuidsFor($selfMember->uuid);
@@ -1109,6 +1161,10 @@ class FamilyMemberGraphService
             $this->syncChildOtherParent($selfMember, $child, $childData, $userId);
 
             $keptUuids[] = $child->uuid;
+        }
+
+        if (! $allowRemove) {
+            return;
         }
 
         foreach ($existing as $child) {
@@ -1201,8 +1257,12 @@ class FamilyMemberGraphService
     /**
      * @param  list<array<string, mixed>>  $spouses
      */
-    private function syncSpouses(FamilyMember $selfMember, array $spouses, User $user): void
-    {
+    private function syncSpouses(
+        FamilyMember $selfMember,
+        array $spouses,
+        User $user,
+        bool $allowRemove = false,
+    ): void {
         $existing = $this->findSpouseMembers($selfMember);
         $keptUuids = [];
 
@@ -1226,6 +1286,7 @@ class FamilyMemberGraphService
                 $spouseData['father'] ?? null,
                 'male',
                 $user,
+                allowRemove: false,
             );
             $this->syncDirectParent(
                 $selfMember,
@@ -1233,9 +1294,14 @@ class FamilyMemberGraphService
                 $spouseData['mother'] ?? null,
                 'female',
                 $user,
+                allowRemove: false,
             );
 
             $keptUuids[] = $spouseMember->uuid;
+        }
+
+        if (! $allowRemove) {
+            return;
         }
 
         foreach ($existing as $spouse) {
@@ -1380,8 +1446,12 @@ class FamilyMemberGraphService
     }
 
     /** @param  list<array<string, mixed>>  $siblings */
-    private function syncSiblings(FamilyMember $selfMember, array $siblings, int $userId): void
-    {
+    private function syncSiblings(
+        FamilyMember $selfMember,
+        array $siblings,
+        int $userId,
+        bool $allowRemove = false,
+    ): void {
         $existing = $this->siblingsOf($selfMember->uuid);
         $parents = $this->parentsOf($selfMember->uuid);
         $keptUuids = [];
@@ -1398,6 +1468,10 @@ class FamilyMemberGraphService
             }
 
             $keptUuids[] = $sibling->uuid;
+        }
+
+        if (! $allowRemove) {
+            return;
         }
 
         foreach ($existing as $sibling) {

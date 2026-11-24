@@ -31,6 +31,44 @@ class FamilyInfoTest extends TestCase
             ->assertJsonPath('family_info.mother.last_name', 'Khan');
     }
 
+    public function test_null_and_empty_lists_do_not_wipe_relatives(): void
+    {
+        $user = $this->createUserWithFamily(['display_name' => 'Ahmed']);
+        FamilyMember::query()->where('user_id', $user->id)->firstOrFail()
+            ->update(['first_name' => 'Ahmed', 'last_name' => 'Ali', 'gender' => 'male']);
+        $this->actingAsUser($user);
+
+        $this->patchJson('/api/v1/family-tree/family-info', [
+            'father' => ['first_name' => 'Omar', 'last_name' => 'Ali', 'gender' => 'male'],
+            'mother' => ['first_name' => 'Fatima', 'last_name' => 'Khan', 'gender' => 'female'],
+            'spouse' => ['first_name' => 'Sara', 'last_name' => 'Ali', 'gender' => 'female'],
+            'children' => [
+                ['first_name' => 'Yusuf', 'last_name' => 'Ali', 'gender' => 'male'],
+            ],
+            'siblings' => [
+                ['first_name' => 'Amina', 'last_name' => 'Ali', 'gender' => 'female'],
+            ],
+        ])->assertOk();
+
+        // Classic form blunder: send nulls / empty lists for untouched sections.
+        $this->patchJson('/api/v1/family-tree/family-info', [
+            'father' => null,
+            'mother' => null,
+            'spouse' => null,
+            'spouses' => [],
+            'children' => [],
+            'siblings' => [],
+            'paternal_grandfather' => null,
+            'paternal_uncles' => [],
+            'marriage_date' => '2019-01-01',
+        ])->assertOk()
+            ->assertJsonPath('family_info.father.first_name', 'Omar')
+            ->assertJsonPath('family_info.mother.first_name', 'Fatima')
+            ->assertJsonPath('family_info.spouses.0.first_name', 'Sara')
+            ->assertJsonPath('family_info.children.0.first_name', 'Yusuf')
+            ->assertJsonPath('family_info.siblings.0.first_name', 'Amina');
+    }
+
     public function test_marriage_date_only_patch_does_not_unlink_relatives(): void
     {
         $user = $this->createUserWithFamily(['display_name' => 'Ahmed']);

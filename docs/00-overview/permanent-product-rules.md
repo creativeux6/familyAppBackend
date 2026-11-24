@@ -74,7 +74,20 @@ Object storage (B2/S3) costs money for **storage** and for **egress (reads)**. P
 | Admin user detail | `adminSummary` — pool bars, stream/download/view, B2 cost |
 | Object store | `MEDIA_DISK=b2` + `B2_*`; prefixes from `MEDIA_KEY_PREFIX` / `AVATAR_KEY_PREFIX` |
 
-## 4. Agent / PR checklist
+## 4. Family tree: forms must never wipe relatives (NON-NEGOTIABLE)
+
+A partial `PATCH /family-tree/family-info` (e.g. profile marriage date, empty children/siblings, null parents) once **detached the whole tree**. That must not recur.
+
+| Must | Must not |
+|------|----------|
+| Treat family-info PATCH as **merge-only** (add/update only) | Delete/detach relatives because a form sent `null`, `[]`, or omitted a filled slot |
+| Keep `allowRemove: false` on graph sync from forms | Re-enable full-replace sync from any UI save |
+| Client payloads **omit** empty/null relative keys | Send `father: null` / `children: []` as “clear this section” |
+| Removals only via an **explicit delete** API (when built) | Infer deletion from a profile or manage-family save |
+
+Implementation: `FamilyMemberGraphService::syncMatchingInfo`, `DeclaredRelativeService::syncMatchingInfo`, mobile `FamilyInfo.toJson` / profile marriage-date-only patch.
+
+## 5. Agent / PR checklist
 
 - [ ] Reinstall + same password still unlocks old gallery + chat
 - [ ] New register user has Free 5 GB plan assignment (not env default)
@@ -84,3 +97,4 @@ Object storage (B2/S3) costs money for **storage** and for **egress (reads)**. P
 - [ ] Every new media download/stream path calls `chargeReadTransfer`
 - [ ] User-facing quota APIs expose stored usage only; admin shows monthly access + reset
 - [ ] Media disk uses `B2_*` (or documented local/MinIO for dev), not production AWS keys for media
+- [ ] Family-info / profile saves cannot detach existing relatives (`null`/`[]` stay merge-only)
