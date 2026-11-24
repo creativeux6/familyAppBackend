@@ -114,23 +114,18 @@ class RebuildWaheedFamilyTreeCommand extends Command
                 $this->parent($pgm, $sib);
             }
 
-            // Asgree's son Zahid / Noman Zahid
-            $zahid = $this->person('Noman', 'Zahid', 'male');
-            $this->parent($auntAsgree, $zahid);
-            // Also accept plain "Zahid" name variant already in DB
-            $zahidAlt = $this->findPerson('Zahid', '', 'male');
-            if ($zahidAlt && $zahidAlt->uuid !== $zahid->uuid) {
-                $this->parent($auntAsgree, $zahidAlt);
+            // IMPORTANT: Asgree Bibi has NO children recorded in this tree.
+            // Noman Zahid (father: Zahid Akhtar) is an independent family —
+            // never attach him or his household under Asgree / Khurshid / Waheed.
+            // Detach any leftover wrong edges from older rebuilds.
+            foreach (['Noman Zahid', 'Zahid'] as $wrongLabel) {
+                $parts = explode(' ', $wrongLabel, 2);
+                $wrong = $this->findPerson($parts[0], $parts[1] ?? '', 'male')
+                    ?? ($parts[0] === 'Zahid' ? $this->findPerson('Zahid', '', 'male') : null);
+                if ($wrong) {
+                    $this->detachWrongChildren($auntAsgree, [$wrong]);
+                }
             }
-
-            $urooj = $this->person('Urooj', 'Noman', 'female');
-            $this->spouse($zahid, $urooj);
-            $hafsa = $this->person('Hafsa', 'Noman', 'female');
-            $ahmad = $this->person('Ahmad', 'Noman', 'male');
-            $this->parent($zahid, $hafsa);
-            $this->parent($urooj, $hafsa);
-            $this->parent($zahid, $ahmad);
-            $this->parent($urooj, $ahmad);
 
             // Saba Younas (paternal aunt) + husband Muhammad Younas + daughters
             $sabaHusband = $this->person('Muhammad', 'Younas', 'male');
