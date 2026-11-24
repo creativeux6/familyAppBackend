@@ -12,6 +12,7 @@ class GroupMember extends Model
         'user_id',
         'role',
         'joined_at',
+        'added_by_user_id',
         'last_read_at',
         'last_read_message_uuid',
         'last_delivered_at',
@@ -34,5 +35,10 @@ class GroupMember extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function addedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'added_by_user_id');
     }
 }

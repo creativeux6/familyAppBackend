@@ -60,13 +60,25 @@ class InspectGroupMembersCommand extends Command
                 : 'user#'.$group->created_by_user_id));
             $this->line('  member_count: '.$group->members->count());
             $this->newLine();
-            $this->line(sprintf('  %-20s %-10s %-22s %-22s %s', 'joined_at', 'role', 'name', 'phone', 'inference'));
-            $this->line('  '.str_repeat('-', 100));
+            $this->line(sprintf(
+                '  %-20s %-10s %-22s %-22s %-22s %s',
+                'joined_at',
+                'role',
+                'name',
+                'phone',
+                'added_by',
+                'inference',
+            ));
+            $this->line('  '.str_repeat('-', 120));
 
             $createdAt = $group->created_at?->copy();
             foreach ($group->members->sortBy('joined_at') as $membership) {
                 $u = $membership->user;
                 $joined = $membership->joined_at;
+                $addedBy = $membership->added_by_user_id
+                    ? User::query()->find($membership->added_by_user_id)
+                    : null;
+                $addedByLabel = $addedBy?->display_name ?? '—';
                 $inference = 'unknown';
                 if ($createdAt && $joined) {
                     $delta = abs($joined->diffInSeconds($createdAt));
@@ -74,25 +86,27 @@ class InspectGroupMembersCommand extends Command
                         $inference = 'added at CREATE (in the create member list)';
                     } elseif ($membership->role === 'owner') {
                         $inference = 'group owner (creator)';
+                    } elseif ($addedBy) {
+                        $inference = 'added LATER by '.$addedBy->display_name;
                     } else {
-                        $inference = 'added LATER via Add members (who added: NOT STORED)';
+                        $inference = 'added LATER (added_by missing — pre-migration)';
                     }
                 }
 
                 $this->line(sprintf(
-                    '  %-20s %-10s %-22s %-22s %s',
+                    '  %-20s %-10s %-22s %-22s %-22s %s',
                     $joined?->format('Y-m-d H:i:s') ?? '—',
                     $membership->role,
                     mb_substr($u?->display_name ?? '?', 0, 22),
                     $u?->phone ?? '—',
+                    mb_substr($addedByLabel, 0, 22),
                     $inference,
                 ));
             }
         }
 
         $this->newLine();
-        $this->warn('Note: the app never recorded "added_by" for group members.');
-        $this->warn('So we cannot name who pressed Add for a later join — only the group creator and join timestamps.');
+        $this->line('New memberships store added_by_user_id. Older rows may show "—" until re-added.');
 
         return self::SUCCESS;
     }

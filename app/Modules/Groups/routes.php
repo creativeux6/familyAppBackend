@@ -29,5 +29,8 @@ Route::prefix('groups')->middleware('auth:sanctum')->group(function () {
     Route::patch('/{uuid}', [GroupController::class, 'update']);
     Route::delete('/{uuid}', [GroupController::class, 'destroy']);
     Route::post('/{uuid}/members', [GroupController::class, 'addMembers']);
+    Route::patch('/{uuid}/members/{userUuid}', [GroupController::class, 'updateMemberRole']);
     Route::delete('/{uuid}/members/{userUuid}', [GroupController::class, 'removeMember']);
+    Route::post('/{uuid}/avatar', [GroupController::class, 'uploadAvatar']);
+    Route::delete('/{uuid}/avatar', [GroupController::class, 'deleteAvatar']);
 });

@@ -68,7 +68,7 @@ class AvatarController extends Controller
 
     public function show(Request $request, string $subjectType, string $subjectUuid, string $variant): StreamedResponse
     {
-        if (! in_array($subjectType, ['users', 'members'], true)) {
+        if (! in_array($subjectType, ['users', 'members', 'groups'], true)) {
             abort(404);
         }
 

@@ -59,10 +59,10 @@ class GroupService
                 'member_count' => 0,
             ]);
 
-            $this->addMemberRecord($group, $user, 'owner');
+            $this->addMemberRecord($group, $user, 'owner', $user);
 
             foreach ($targets as $target) {
-                $this->addMemberRecord($group, $target, 'member');
+                $this->addMemberRecord($group, $target, 'member', $user);
             }
 
             GroupEncryptionGeneration::create([
@@ -124,8 +124,8 @@ class GroupService
                 'member_count' => 0,
             ]);
 
-            $this->addMemberRecord($group, $user, 'owner');
-            $this->addMemberRecord($group, $other, 'member');
+            $this->addMemberRecord($group, $user, 'owner', $user);
+            $this->addMemberRecord($group, $other, 'member', $user);
 
             GroupEncryptionGeneration::create([
                 'group_uuid' => $group->uuid,
@@ -195,6 +195,89 @@ class GroupService
         return $this->formatGroup($group->fresh(['members.user:'.self::USER_AVATAR_COLUMNS]));
     }
 
+    public function updateMemberRole(
+        User $actor,
+        string $groupUuid,
+        string $targetUserUuid,
+        string $role,
+    ): array {
+        $group = $this->requireGroupMember($actor, $groupUuid);
+
+        if ($group->isDirect()) {
+            throw ValidationException::withMessages([
+                'group' => ['Direct chats do not support admin roles.'],
+            ]);
+        }
+
+        // Only the owner can promote/demote admins.
+        $actorMembership = $group->members()->where('user_id', $actor->id)->first();
+        if (! $actorMembership || $actorMembership->role !== 'owner') {
+            throw ValidationException::withMessages([
+                'role' => ['Only the group owner can change member roles.'],
+            ]);
+        }
+
+        $target = User::query()->where('uuid', $targetUserUuid)->firstOrFail();
+        $membership = $group->members()->where('user_id', $target->id)->first();
+        if (! $membership) {
+            throw ValidationException::withMessages([
+                'user_uuid' => ['User is not in this group.'],
+            ]);
+        }
+
+        if ($membership->role === 'owner') {
+            throw ValidationException::withMessages([
+                'role' => ['You cannot change the owner role.'],
+            ]);
+        }
+
+        if ($target->id === $actor->id) {
+            throw ValidationException::withMessages([
+                'role' => ['You cannot change your own role.'],
+            ]);
+        }
+
+        $membership->update(['role' => $role]);
+
+        return $this->formatGroup($group->fresh(['members.user:'.self::USER_AVATAR_COLUMNS]), $actor);
+    }
+
+    public function uploadAvatar(
+        User $user,
+        string $groupUuid,
+        \Illuminate\Http\UploadedFile $master,
+        \Illuminate\Http\UploadedFile $thumb,
+    ): array {
+        $group = $this->requireGroupMember($user, $groupUuid);
+        $this->assertCanManage($user, $group);
+
+        if ($group->isDirect()) {
+            throw ValidationException::withMessages([
+                'avatar' => ['Direct chats use the other person’s profile photo.'],
+            ]);
+        }
+
+        $this->avatars->uploadGroupAvatar($user, $group, $master, $thumb);
+
+        return $this->formatGroup($group->fresh(['members.user:'.self::USER_AVATAR_COLUMNS]), $user);
+    }
+
+    public function deleteAvatar(User $user, string $groupUuid): array
+    {
+        $group = $this->requireGroupMember($user, $groupUuid);
+        $this->assertCanManage($user, $group);
+
+        if ($group->isDirect()) {
+            throw ValidationException::withMessages([
+                'avatar' => ['Direct chats use the other person’s profile photo.'],
+            ]);
+        }
+
+        $this->avatars->deleteGroupAvatar($user, $group);
+
+        return $this->formatGroup($group->fresh(['members.user:'.self::USER_AVATAR_COLUMNS]), $user);
+    }
+
     /** @param  list<string>  $userUuids */
     public function addMembers(User $user, string $groupUuid, array $userUuids): array
     {
@@ -224,7 +307,7 @@ class GroupService
                 continue;
             }
 
-            $this->addMemberRecord($group, $target, 'member');
+            $this->addMemberRecord($group, $target, 'member', $user);
         }
 
         $group->update(['member_count' => $group->members()->count()]);
@@ -355,13 +438,18 @@ class GroupService
             ->exists();
     }
 
-    private function addMemberRecord(Group $group, User $user, string $role): GroupMember
-    {
+    private function addMemberRecord(
+        Group $group,
+        User $user,
+        string $role,
+        ?User $addedBy = null,
+    ): GroupMember {
         return GroupMember::create([
             'group_uuid' => $group->uuid,
             'user_id' => $user->id,
             'role' => $role,
             'joined_at' => now(),
+            'added_by_user_id' => $addedBy?->id,
         ]);
     }
 
@@ -416,16 +504,26 @@ class GroupService
             'name' => $group->name,
             'display_name' => $this->resolveDisplayName($group, $viewer),
             'description' => $group->description,
+            'avatar' => $group->isDirect() ? null : $this->avatars->groupAvatarPayload($group),
             'member_count' => $group->member_count,
             'other_member' => $this->resolveOtherMember($group, $viewer),
-            'members' => $group->members->map(fn (GroupMember $member) => [
-                'user_uuid' => $member->user->uuid,
-                'display_name' => $member->user->display_name,
-                'phone' => $member->user->phone,
-                'role' => $member->role,
-                'joined_at' => $member->joined_at?->toIso8601String(),
-                'avatar' => $this->avatars->userAvatarPayload($member->user),
-            ])->values()->all(),
+            'members' => $group->members->map(function (GroupMember $member) {
+                if (! $member->relationLoaded('addedBy') && $member->added_by_user_id) {
+                    $member->load('addedBy:'.self::USER_AVATAR_COLUMNS);
+                }
+                $addedBy = $member->addedBy;
+
+                return [
+                    'user_uuid' => $member->user->uuid,
+                    'display_name' => $member->user->display_name,
+                    'phone' => $member->user->phone,
+                    'role' => $member->role,
+                    'joined_at' => $member->joined_at?->toIso8601String(),
+                    'added_by_user_uuid' => $addedBy?->uuid,
+                    'added_by_display_name' => $addedBy?->display_name,
+                    'avatar' => $this->avatars->userAvatarPayload($member->user),
+                ];
+            })->values()->all(),
             'created_at' => $group->created_at?->toIso8601String(),
             'unread_count' => $unreadCount,
             'last_message' => $lastMessage ? [

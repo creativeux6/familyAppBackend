@@ -11,6 +11,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/family-tree/members/{memberUuid}/avatar', [AvatarController::class, 'deleteMember']);
 
     Route::get('/avatars/{subjectType}/{subjectUuid}/{variant}', [AvatarController::class, 'show'])
-        ->whereIn('subjectType', ['users', 'members'])
+        ->whereIn('subjectType', ['users', 'members', 'groups'])
         ->whereIn('variant', ['thumb', 'master']);
 });

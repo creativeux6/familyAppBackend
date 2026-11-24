@@ -23,6 +23,11 @@ class Group extends Model
         'direct_key',
         'name',
         'description',
+        'avatar_master_key',
+        'avatar_thumb_key',
+        'avatar_master_bytes',
+        'avatar_thumb_bytes',
+        'avatar_updated_at',
         'created_by_user_id',
         'member_count',
     ];
@@ -32,6 +37,9 @@ class Group extends Model
         return [
             'member_count' => 'integer',
             'type' => 'string',
+            'avatar_master_bytes' => 'integer',
+            'avatar_thumb_bytes' => 'integer',
+            'avatar_updated_at' => 'datetime',
         ];
     }
 

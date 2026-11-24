@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Modules\Groups\Http\Requests\AddGroupMembersRequest;
 use App\Modules\Groups\Http\Requests\CreateDirectChatRequest;
 use App\Modules\Groups\Http\Requests\CreateGroupRequest;
+use App\Modules\Groups\Http\Requests\UpdateGroupMemberRoleRequest;
 use App\Modules\Groups\Http\Requests\UpdateGroupRequest;
+use App\Modules\Groups\Http\Requests\UploadGroupAvatarRequest;
 use App\Modules\Groups\Services\GroupService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -70,11 +72,45 @@ class GroupController extends Controller
         );
     }
 
+    public function updateMemberRole(
+        UpdateGroupMemberRoleRequest $request,
+        string $uuid,
+        string $userUuid,
+    ): JsonResponse {
+        return response()->json(
+            $this->groupService->updateMemberRole(
+                $request->user(),
+                $uuid,
+                $userUuid,
+                $request->validated('role'),
+            )
+        );
+    }
+
     #[OA\Delete(path: '/groups/{uuid}/members/{userUuid}', operationId: 'groupsRemoveMember', summary: 'Remove member or leave group', tags: ['Groups'], security: [['bearerAuth' => []]], parameters: [new OA\Parameter(name: 'uuid', in: 'path', required: true, schema: new OA\Schema(type: 'string', format: 'uuid')), new OA\Parameter(name: 'userUuid', in: 'path', required: true, schema: new OA\Schema(type: 'string', format: 'uuid'))], responses: [new OA\Response(response: 200, description: 'Removed')])]
     public function removeMember(Request $request, string $uuid, string $userUuid): JsonResponse
     {
         return response()->json(
             $this->groupService->removeMember($request->user(), $uuid, $userUuid)
+        );
+    }
+
+    public function uploadAvatar(UploadGroupAvatarRequest $request, string $uuid): JsonResponse
+    {
+        return response()->json(
+            $this->groupService->uploadAvatar(
+                $request->user(),
+                $uuid,
+                $request->file('master'),
+                $request->file('thumb'),
+            )
+        );
+    }
+
+    public function deleteAvatar(Request $request, string $uuid): JsonResponse
+    {
+        return response()->json(
+            $this->groupService->deleteAvatar($request->user(), $uuid)
         );
     }
 

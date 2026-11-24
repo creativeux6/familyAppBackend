@@ -448,14 +448,20 @@ class MediaUploadService
             return 'private';
         }
 
-        // Voice notes are chat-only — never surface them in the gallery.
-        if (($metadata['chat_attachment_kind'] ?? null) === 'voice') {
+        // Voice notes + chat GIFs are chat-only — never surface them in the gallery.
+        $kind = $metadata['chat_attachment_kind'] ?? null;
+        if (in_array($kind, ['voice', 'gif'], true)) {
             return 'private';
         }
         $mime = strtolower((string) ($metadata['original_mime_type'] ?? $media->mime_type ?? ''));
         $name = strtolower((string) ($metadata['display_name'] ?? $media->display_name ?? ''));
         if (($metadata['source'] ?? null) === 'chat'
             && (str_starts_with($mime, 'audio/') || str_starts_with($name, 'voice-'))) {
+            return 'private';
+        }
+        // Giphy / chat GIFs (mime or giphy- filename) stay out of gallery.
+        if (($metadata['source'] ?? null) === 'chat'
+            && ($mime === 'image/gif' || str_starts_with($name, 'giphy-'))) {
             return 'private';
         }
 

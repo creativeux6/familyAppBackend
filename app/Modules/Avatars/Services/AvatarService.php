@@ -3,6 +3,7 @@
 namespace App\Modules\Avatars\Services;
 
 use App\Models\FamilyMember;
+use App\Models\Group;
 use App\Models\User;
 use App\Modules\StoragePlans\Services\StorageQuotaService;
 use Illuminate\Http\UploadedFile;
@@ -121,6 +122,81 @@ class AvatarService
 
         return [
             'avatar' => $this->userAvatarPayload($user->fresh()),
+        ];
+    }
+
+    /** @return array{thumb_url: ?string, master_url: ?string, updated_at: ?string} */
+    public function groupAvatarPayload(Group $group): array
+    {
+        return $this->payloadFor(
+            subjectType: 'groups',
+            subjectUuid: $group->uuid,
+            thumbKey: $group->avatar_thumb_key,
+            masterKey: $group->avatar_master_key,
+            updatedAt: $group->avatar_updated_at?->toIso8601String(),
+        );
+    }
+
+    public function uploadGroupAvatar(User $actor, Group $group, UploadedFile $master, UploadedFile $thumb): array
+    {
+        $this->assertImagePair($master, $thumb);
+        $newBytes = $master->getSize() + $thumb->getSize();
+        $oldBytes = (int) $group->avatar_master_bytes + (int) $group->avatar_thumb_bytes;
+        $delta = $newBytes - $oldBytes;
+        if ($delta > 0) {
+            $this->quota->assertCanStore($actor, $delta);
+        }
+
+        $oldMaster = $group->avatar_master_key;
+        $oldThumb = $group->avatar_thumb_key;
+
+        $masterKey = $this->objectKey('groups', $group->uuid, 'master', $master);
+        $thumbKey = $this->objectKey('groups', $group->uuid, 'thumb', $thumb);
+
+        $disk = $this->disk();
+        $disk->put($masterKey, file_get_contents($master->getRealPath()) ?: '');
+        $disk->put($thumbKey, file_get_contents($thumb->getRealPath()) ?: '');
+
+        $group->forceFill([
+            'avatar_master_key' => $masterKey,
+            'avatar_thumb_key' => $thumbKey,
+            'avatar_master_bytes' => $master->getSize(),
+            'avatar_thumb_bytes' => $thumb->getSize(),
+            'avatar_updated_at' => now(),
+        ])->save();
+
+        $this->deleteKeys([$oldMaster, $oldThumb], [$masterKey, $thumbKey]);
+
+        if ($delta > 0) {
+            $this->quota->addStoredUsage($actor, $delta);
+        } elseif ($delta < 0) {
+            $this->quota->removeStoredUsage($actor, abs($delta));
+        }
+
+        return [
+            'avatar' => $this->groupAvatarPayload($group->fresh()),
+        ];
+    }
+
+    public function deleteGroupAvatar(User $actor, Group $group): array
+    {
+        $oldBytes = (int) $group->avatar_master_bytes + (int) $group->avatar_thumb_bytes;
+        $this->deleteKeys([$group->avatar_master_key, $group->avatar_thumb_key]);
+
+        $group->forceFill([
+            'avatar_master_key' => null,
+            'avatar_thumb_key' => null,
+            'avatar_master_bytes' => 0,
+            'avatar_thumb_bytes' => 0,
+            'avatar_updated_at' => null,
+        ])->save();
+
+        if ($oldBytes > 0) {
+            $this->quota->removeStoredUsage($actor, $oldBytes);
+        }
+
+        return [
+            'avatar' => $this->groupAvatarPayload($group->fresh()),
         ];
     }
 
@@ -370,6 +446,14 @@ class AvatarService
             return $variant === 'master'
                 ? [$user->avatar_master_key, (int) $user->avatar_master_bytes]
                 : [$user->avatar_thumb_key, (int) $user->avatar_thumb_bytes];
+        }
+
+        if ($subjectType === 'groups') {
+            $group = Group::query()->where('uuid', $subjectUuid)->firstOrFail();
+
+            return $variant === 'master'
+                ? [$group->avatar_master_key, (int) $group->avatar_master_bytes]
+                : [$group->avatar_thumb_key, (int) $group->avatar_thumb_bytes];
         }
 
         $member = FamilyMember::query()->where('uuid', $subjectUuid)->firstOrFail();
