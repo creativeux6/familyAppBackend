@@ -21,9 +21,20 @@ class InspectGroupMembersCommand extends Command
 
     public function handle(): int
     {
-        $needle = (string) $this->argument('name');
+        $needle = trim((string) $this->argument('name'));
+        // "Lamp Team" should still match "LampTeam"
+        $compact = preg_replace('/\s+/', '', $needle) ?? $needle;
+
         $groups = Group::query()
-            ->where('name', 'like', '%'.$needle.'%')
+            ->where(function ($q) use ($needle, $compact) {
+                $q->where('name', 'like', '%'.$needle.'%');
+                if ($compact !== '' && strcasecmp($compact, $needle) !== 0) {
+                    $q->orWhereRaw(
+                        "REPLACE(name, ' ', '') LIKE ?",
+                        ['%'.$compact.'%']
+                    );
+                }
+            })
             ->with(['members.user'])
             ->get();
 
