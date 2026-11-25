@@ -105,7 +105,9 @@ class RebuildWaheedFamilyTreeCommand extends Command
 
             // Father's siblings (paternal uncles/aunts) — share paternal grandparents
             $uncleHussain = $this->person('Muhammad', 'Hussain', 'male');
-            $auntAsgree = $this->person('Asgree', 'Bibi', 'female');
+            // Prefer existing "Asgari" spelling if present; otherwise Asgree.
+            $auntAsgree = $this->findPerson('Asgari', 'Bibi', 'female')
+                ?? $this->person('Asgree', 'Bibi', 'female');
             $uncleAli = $this->person('Ali', 'Hussain', 'male');
             $auntSaba = $this->person('Saba', 'Younas', 'female');
 
@@ -114,16 +116,21 @@ class RebuildWaheedFamilyTreeCommand extends Command
                 $this->parent($pgm, $sib);
             }
 
-            // IMPORTANT: Asgree Bibi has NO children recorded in this tree.
-            // Noman Zahid (father: Zahid Akhtar) is an independent family —
-            // never attach him or his household under Asgree / Khurshid / Waheed.
-            // Detach any leftover wrong edges from older rebuilds.
-            foreach (['Noman Zahid', 'Zahid'] as $wrongLabel) {
-                $parts = explode(' ', $wrongLabel, 2);
-                $wrong = $this->findPerson($parts[0], $parts[1] ?? '', 'male')
-                    ?? ($parts[0] === 'Zahid' ? $this->findPerson('Zahid', '', 'male') : null);
+            // Asgree/Asgari + husband Noor Muhammad + son Zahid Mehmood.
+            // Do NOT confuse with Noman Zahid (father: Zahid Akhtar) — other family.
+            $noorMuhammad = $this->person('Noor', 'Muhammad', 'male');
+            $this->spouse($auntAsgree, $noorMuhammad);
+            $zahidMehmood = $this->findPerson('Zahid', 'Mehmood', 'male')
+                ?? $this->person('Zahid', 'Mehmood', 'male');
+            $this->parent($auntAsgree, $zahidMehmood);
+            $this->parent($noorMuhammad, $zahidMehmood);
+
+            // Detach only the wrongly linked Noman / Zahid Akhtar household.
+            foreach ([['Noman', 'Zahid'], ['Zahid', 'Akhtar']] as [$first, $last]) {
+                $wrong = $this->findPerson($first, $last, 'male');
                 if ($wrong) {
                     $this->detachWrongChildren($auntAsgree, [$wrong]);
+                    $this->detachWrongChildren($noorMuhammad, [$wrong]);
                 }
             }
 
